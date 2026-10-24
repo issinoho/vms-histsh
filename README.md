@@ -34,9 +34,9 @@ and HISTSH hands every command to DCL.)
 
 ## Status
 
-**C1, working on OpenVMS x86-64 (E9.2-4) and IA64 (V8.4-2L3)**, tested on both nodes with
-real SSH logins and the on-node tests in [tests/vms](tests/vms). There's no PCSI kit
-yet: it is installed by hand (below). Limits of C1:
+**0.1.0 (C1), an early test release, working on OpenVMS x86-64 (E9.2-4) and IA64 (V8.4-2L3)**, tested on both nodes with
+real SSH logins and the on-node tests in [tests/vms](tests/vms), installed from its
+PCSI kits. Limits of C1:
 
 - DCL's recall buffer holds 254 commands.
 - With several sessions open at once, each saves its own buffer, and the last to save
@@ -49,26 +49,25 @@ yet: it is installed by hand (below). Limits of C1:
 C2, next, gives HISTSH its own line editor: no 254 limit, Ctrl/R search, and one
 history file that all your sessions append to.
 
-## Install (by hand, until the kit)
+## Installing
 
-On the node, with SYSPRV and SYSNAM, after building:
+From the PCSI kit for your architecture (x86-64 or IA64):
 
-    $ @BUILD_VMS                     ! [.BUILD]HISTSH.EXE
-    $ @[.TESTS.VMS]INSTALL_NODE username
+    $ PRODUCT INSTALL HISTSH /SOURCE=dev:[dir]
 
-This puts the files in `SYS$COMMON:[HISTSH]`, installs `SYS$STARTUP:HISTSH$STARTUP.COM`
-and runs it (it defines `HISTSH$ROOT` and `HISTSH`), and grants `HISTSH$USER` to
-*username*. Then:
+This puts the files in `SYS$COMMON:[HISTSH]` and `SYS$STARTUP:HISTSH$STARTUP.COM`, and
+runs it once (it defines `HISTSH$ROOT` and `HISTSH`). Then:
 
 - add `$ @SYS$STARTUP:HISTSH$STARTUP.COM` to SYSTARTUP_VMS.COM;
 - add this as the last line of SYLOGIN.COM:
 
       $ IF F$SEARCH("HISTSH:HISTSH_START.COM") .NES. "" THEN @HISTSH:HISTSH_START
 
-To try it without any of that, run `RUN HISTSH.EXE` with `HISTSH` defined as a
-process logical name pointing at the directory holding the files
-(`tests/vms/try_histsh.com`). History goes to `SYS$LOGIN:HISTSH_HISTORY.LIS`, or to the
-file named by the logical `HISTSH$HISTORY`.
+- grant `HISTSH$USER` to each user who wants it (above).
+
+`[HISTSH]README.VMS` covers trying it without these steps, the history file, and
+removing it. `PRODUCT REMOVE HISTSH` deassigns the logical names; users' history
+files are kept.
 
 ## Building and testing
 
