@@ -36,8 +36,8 @@ not something to rely on (N6).
 
 ## N5. RECALL round trip keeps order (2026-10-24, x86 and IA64)
 
-In that interactive child, `RECALL/OUTPUT=f` writes the buffer newest first, one command
-per record. `RECALL/ERASE/INPUT=f` restores it in the same order: RECALL/ALL matches
+In that interactive child, `RECALL/OUTPUT=f` writes the buffer oldest first, one command
+per record (corrected 2026-10-24: first read as newest first). `RECALL/ERASE/INPUT=f` restores it in the same order: RECALL/ALL matches
 before and after, and up-arrow then gives the newest line. RECALL commands themselves
 are never stored. Phase A works as planned.
 
@@ -81,3 +81,13 @@ arrives in DCL's output as:
 So the byte before the marker tells a top-level prompt from a continuation.
 DCL redraws the prompt (marker included) on up-arrow, Ctrl/U and Ctrl/R, so a
 marker seen while the user is already at the prompt is a redraw, not a new prompt.
+
+## N10. A fresh prompt follows a line feed; redraws don't (2026-10-24, x86)
+
+In the first HISTSH end-to-end run, up-arrows and Return sent in one burst made DCL
+redraw the line (`<NUL><NUL><NUL>` + marker) *after* the Return, and HISTSH took the
+redraw for the next prompt: the hidden save ran early and showed on the screen, and its
+temporary file was left behind. Every fresh top-level prompt seen so far follows a line
+feed: `<LF><CR><NUL>` + marker, or `<LF><NUL>` + marker (first prompt, after
+Ctrl/Y "Interrupt"). Redraws have `<NUL><NUL><NUL>` or `<ESC>[K<CR><NUL>` before the
+marker. hs_relay now requires the line feed (unit test `burst_redraw_while_running`).

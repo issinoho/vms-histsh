@@ -1,0 +1,14 @@
+# Can a prompt carry a marker escape sequence? Continuation and length limits.
+1 make ESC | E = " "\rE[0,8] = 27\r
+1 marker prompt | SET PROMPT="''E'[?7777h$ "\r
+1 command | SHOW TIME\r
+1 continued line part 1 | WRITE SYS$OUTPUT -\r
+1 continued line part 2 | "continued"\r
+1 parameter prompt | COPY\r
+1 cancel it | \x1a
+1 32-char prompt | SET PROMPT="''E'[?7777hABCDEFGHIJKLMNOPQRSTUVW$ "\r
+1 command | SHOW TIME\r
+1 40-char prompt | SET PROMPT="''E'[?7777hABCDEFGHIJKLMNOPQRSTUVWXYZ012345$ "\r
+1 command | SHOW TIME\r
+1 prompt from F$ENVIRONMENT | WRITE SYS$OUTPUT F$LENGTH(F$ENVIRONMENT("PROMPT"))\r
+2 logout | LOGOUT\r

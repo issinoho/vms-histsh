@@ -50,14 +50,19 @@ static void enter_idle(hs_relay *r)
     for (i = 0; i < n; i++) user_byte(r, tmp[i]);
 }
 
-/* A marker has been seen; `before` is the output byte straight before it. */
-static void on_marker(hs_relay *r, char before)
+/* A marker has been seen. What came straight before it says which kind of prompt it
+   is (NOTES N9, N10): a fresh top-level prompt follows a line feed, as LF NUL or
+   LF CR NUL; a continuation prompt follows "_"; anything else (NUL NUL NUL, or
+   ESC [ K CR NUL) is DCL redrawing the line after up-arrow, Ctrl/U or Ctrl/R. */
+static void on_marker(hs_relay *r)
 {
-    if (before == '_') {                   /* continuation prompt: the command goes on */
+    int fresh = r->prev == '\0' &&
+                (r->prev2 == '\n' || (r->prev2 == '\r' && r->prev3 == '\n'));
+    if (r->prev == '_') {                   /* continuation prompt: the command goes on */
         if (r->state == HS_RUNNING) { r->state = HS_IDLE; r->typed = r->ahead; r->ahead = 0; }
         return;
     }
-    if (before != '\0') return;            /* not a prompt DCL issued: ignore */
+    if (!fresh) return;                    /* a redraw: ignore */
     switch (r->state) {
     case HS_BOOT:
         type_cmd(r, r->boot_cmd);
@@ -97,6 +102,8 @@ static void plain_byte(hs_relay *r, outbuf *o, char c)
     default:
         out_byte(r, o, c);
     }
+    r->prev3 = r->prev2;
+    r->prev2 = r->prev;
     r->prev = c;
 }
 
@@ -109,7 +116,7 @@ void hs_relay_init(hs_relay *r, const hs_sink *sink, const char *boot_cmd,
     r->load_cmd = load_cmd;
     r->save_cmd = save_cmd;
     r->state = HS_BOOT;
-    r->prev = '\n';
+    r->prev = r->prev2 = r->prev3 = '\n';
 }
 
 void hs_relay_child_output(hs_relay *r, const char *p, unsigned int n)
@@ -124,7 +131,7 @@ void hs_relay_child_output(hs_relay *r, const char *p, unsigned int n)
             if (++r->mpos == MLEN) {
                 r->mpos = 0;
                 out_flush(r, &o);          /* screen order: text before the prompt first */
-                on_marker(r, r->prev);
+                on_marker(r);
             }
             continue;
         }

@@ -1,0 +1,24 @@
+# Session 1: start HISTSH, run commands, log out of the inner session.
+6 start HISTSH (inner session runs LOGIN.COM) | RUN HISTSH:HISTSH\r
+2 command | SHOW TIME\r
+2 command with quotes | WRITE SYS$OUTPUT "it's ""q"""\r
+2 continued command part 1 | WRITE SYS$OUTPUT -\r
+2 continued command part 2 | "continued"\r
+2 inner session's logicals | SHOW LOGICAL HISTSH$CHILD\r
+2 recall all | RECALL/ALL\r
+3 log out of the inner session | LOGOUT\r
+2 outer DCL: saved file | TYPE C1_HISTORY.LIS\r
+1 outer DCL: versions | DIRECTORY C1_HISTORY.LIS*\r
+# Session 2: history from session 1 is back.
+6 start HISTSH again | RUN HISTSH:HISTSH\r
+2 recall all (expect session 1's commands) | RECALL/ALL\r
+2 up-arrow x3 then Return (expect the quoted WRITE) | \e[A\e[A\e[A\r
+2 two commands pasted at once (typeahead) | SHOW TIME\rSHOW DEFAULT\r
+2 enable Ctrl/T | SET CONTROL=T\r
+2 long-running command | DIRECTORY/SIZE SYS$SYSTEM:*.*;*\r
+2 Ctrl/Y interrupts it | \x19
+2 Ctrl/T | \x14
+3 log out of the inner session | LOGOUT\r
+2 outer DCL: saved file | TYPE C1_HISTORY.LIS\r
+1 outer DCL: versions | DIRECTORY C1_HISTORY.LIS*\r
+2 outer DCL: logout | LOGOUT\r

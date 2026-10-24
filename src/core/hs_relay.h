@@ -37,7 +37,7 @@ typedef struct hs_relay {
     unsigned int ahead;      /* user bytes sent while RUNNING: typeahead */
     unsigned int typed;      /* user bytes sent at the current prompt */
     unsigned int mpos;       /* bytes of HS_MARKER matched and held back */
-    char prev;               /* last output byte before the held bytes */
+    char prev, prev2, prev3; /* the last three output bytes before any held ones */
     char hold[HS_HOLD_MAX];  /* user keys held during BOOT and HIDDEN */
     unsigned int nhold;
     unsigned int lost;       /* keys dropped because hold[] was full */

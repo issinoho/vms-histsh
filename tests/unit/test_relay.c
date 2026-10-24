@@ -153,6 +153,27 @@ static void test_redraw_at_prompt(void)
     expect_int("redraw: still idle", r.state, HS_IDLE);
 }
 
+/* Up-arrows and Return arrive in one burst: DCL's redraws come after the Return,
+   while the relay is RUNNING, and must not be taken for the next prompt (x86 run,
+   2026-10-24: the hidden save was typed early and showed on the screen). */
+static void test_burst_redraw_while_running(void)
+{
+    hs_relay r;
+    static const char redraw[] = "\r\033[K\0\0\0" M "$ SHOW TIME";
+    static const char ctrlu[] = " \r\033[K\r\0" M "$ ";
+    reset(); boot(&r); reset();
+    keys(&r, "\033[A\033[A\r");
+    out(&r, redraw, sizeof redraw - 1);
+    out(&r, redraw, sizeof redraw - 1);
+    out(&r, ctrlu, sizeof ctrlu - 1);
+    expect_str("burst: no hidden save on redraws", child, "\033[A\033[A\r");
+    expect_int("burst: still running", r.state, HS_RUNNING);
+    outs(&r, "\r\n\r  24-OCT-2026\r\n");
+    prompt(&r);
+    expect_str("burst: save at the fresh prompt", child,
+               "\033[A\033[A\rRECALL/OUTPUT=HISTSH$NEW\r");
+}
+
 static void test_split_marker_and_false_start(void)
 {
     hs_relay r;
@@ -171,6 +192,7 @@ static void test_timeout(void)
     hs_relay r;
     reset(); boot(&r); reset();
     keys(&r, "A\r");
+    outs(&r, "A\r\n");
     prompt(&r);
     keys(&r, "B");
     hs_relay_timeout(&r);
@@ -189,6 +211,7 @@ int main(void)
     test_typeahead_defers_save();
     test_continuation_prompt();
     test_redraw_at_prompt();
+    test_burst_redraw_while_running();
     test_split_marker_and_false_start();
     test_timeout();
     printf("%d checks, %d failures\n", checks, failures);
