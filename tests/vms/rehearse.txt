@@ -1,0 +1,7 @@
+# The new SYLOGIN, run by hand in an interactive session, starts the installed HISTSH.
+2 holds the identifier? | SHOW PROCESS/RIGHTS\r
+12 run the LIVE SYLOGIN (expect fastfetch, X86VMS:: prompt) | @SYS$MANAGER:SYLOGIN\r
+2 command | SHOW TIME\r
+2 a SYLOGIN symbol made it in | SHOW SYMBOL GSED\r
+2 recall all | RECALL/ALL\r
+4 logout (ends the whole session) | LOGOUT\r
