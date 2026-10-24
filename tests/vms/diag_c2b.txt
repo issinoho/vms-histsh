@@ -1,0 +1,8 @@
+1 a | SHOW SYMBOL A1\r
+1 b | SHOW SYMBOL B1\r
+1 c | SHOW SYMBOL C1\r
+1 rerun b (older, not last) | SHOW SYMBOL B1\r
+1.5 what DCL kept | RECALL/ALL\r
+1 rerun a via up-arrow x4 | \e[A\e[A\e[A\r
+1.5 what DCL kept | RECALL/ALL\r
+2 logout | LOGOUT\r

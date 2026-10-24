@@ -1,0 +1,6 @@
+# A later login sees both sessions' commands.
+6 start HISTSH | RUN HISTSH:HISTSH\r
+2 up x1 | \e[A
+2 clear | \x05\x15
+3 log out | LOGOUT\r
+2 outer logout | LOGOUT\r

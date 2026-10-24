@@ -108,14 +108,24 @@ static void flush_transcript(void)
 static void type_text(const char *label, const char *s, unsigned int n, float secs)
 {
     unsigned short *h = (unsigned short *) (region + WBUF_OFF);
-    unsigned int st;
+    unsigned int st, tries = 0;
     int ftype = 4;                                  /* LIB$K_IEEE_S */
+    float pause = 0.05f;
     printf("---- %s\n", label);
     if (n > DATA_MAX) n = DATA_MAX;
-    memcpy(region + WBUF_OFF + 4, s, n);
-    st = n ? ptd$write(chan, 0, 0, region + WBUF_OFF, n, 0, 0) : SS$_NORMAL;
-    if (n && (!(st & 1) || !(h[0] & 1)))
-        printf("  write: %s / buffer %%X%04X\n", msg(st), h[0]);
+    /* A terminal's typeahead buffer can be smaller than a burst (DATAOVERUN, IA64):
+       send the rest again until it is all taken, as a fast typist's keys would be. */
+    while (n && tries++ < 200) {
+        unsigned int took;
+        memcpy(region + WBUF_OFF + 4, s, n);
+        st = ptd$write(chan, 0, 0, region + WBUF_OFF, n, 0, 0);
+        took = (h[0] & 1) || h[0] == SS$_DATAOVERUN ? h[1] : 0;
+        if (!(st & 1) || (!(h[0] & 1) && h[0] != SS$_DATAOVERUN))
+            printf("  write: %s / buffer %%X%04X, took %u of %u\n", msg(st), h[0], took, n);
+        if (took > n) took = n;
+        s += took; n -= took;
+        if (n) lib$wait(&pause, 0, &ftype);
+    }
     lib$wait(&secs, 0, &ftype);
     flush_transcript();
 }

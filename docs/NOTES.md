@@ -122,3 +122,50 @@ what the user had entered. Three changes:
   knowing the prompt's text, HISTSH couldn't tell the prompt from DCL echoing typeahead
   after it. A start marker follows NUL or `_`; an end marker follows the prompt's last
   character.
+
+## N13. DCL's recall buffer is limited by bytes, not just count (2026-10-24, x86)
+
+`tests/vms/diag_c2_fill.com` typed 260 short commands (`SHOW SYMBOL Cnnn`, 15 bytes):
+`RECALL/OUTPUT` then held 187 of them, C74 to C260, none missing. HELP says "up to
+254", but the buffer is a few kilobytes, so longer commands mean fewer kept. The oldest
+drop off first.
+
+## N14. DCL drops only consecutive duplicates (2026-10-24, x86)
+
+`diag_c2.txt` and `diag_c2b.txt`: `SHOW TIME` twice in a row is stored once, but
+rerunning an older command (A1, B1, C1, then B1) stores a second copy. Recalling the
+newest entry and running it again stores nothing. So the buffer is an append-only list
+with the oldest falling off, and comparing two snapshots shows exactly what was added.
+
+## N15. Ctrl/E then Ctrl/U clears DCL's line from any cursor position (2026-10-24, x86)
+
+With the cursor three places from the end of a typed line, Ctrl/E then Ctrl/U leaves an
+empty line, and DCL redraws it as `<CR><ESC>[K<CR><NUL>` + prompt. The `<ESC>[K` before
+it makes it a redraw under N10's rule, not a fresh prompt.
+
+## N16. Two processes can append to one file by open-append-close (2026-10-24, both)
+
+`probes/probe_append.c`: two subprocesses each appended 300 lines to one file, opening
+it with `fopen("a")` for each line and retrying every 10 ms while it was locked. All 600
+lines were intact on both nodes, with 141–147 retries on x86 (4.5 s in all) and about 610
+on IA64 (22 s). HISTSH appends one line per command, so contention is rare.
+
+## N17. A pseudo-terminal write can overrun the typeahead buffer (2026-10-24, IA64)
+
+A 450-byte burst written with PTD$WRITE to a DCL waiting at its prompt came back with
+`SS$_DATAOVERUN` (%X0838) in the buffer's status word and **152** in the second word:
+the terminal took 152 bytes, and the rest was lost. On x86 the same burst fitted. Up to
+then HISTSH ignored the status, so a burst of keys (a key held down, or a paste) could
+lose input on IA64, including the Return after a hidden command. That is the likely
+cause of a corrupted test history: HISTSH's own `RECALL/OUTPUT=HISTSH$NEW` and 125 old
+entries recorded again. Now:
+- HISTSH queues bytes for the child and sends again, 20 ms later, whatever the
+  terminal didn't take;
+- the child's terminal has the alternate typeahead buffer (`TT2$M_ALTYPEAHD`);
+- HISTSH's own commands are never recorded;
+- two snapshots with no overlap at all count only the newest entry as new.
+PTYDRIVE now resends what wasn't taken, too.
+
+Also seen while testing: VMS file names ignore case, so `c2_A.txt` and `c2_a.txt`
+are one file (a test ran the wrong script). The scripts are now `c2_single.txt`,
+`c2_sess1.txt` and `c2_sess2.txt`.

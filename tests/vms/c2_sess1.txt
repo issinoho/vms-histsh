@@ -1,0 +1,19 @@
+# C2a: session A of two running at once
+6 start HISTSH | RUN HISTSH:HISTSH\r
+0.4 cmd A01 | SHOW SYMBOL A01\r
+0.4 cmd A02 | SHOW SYMBOL A02\r
+0.4 cmd A03 | SHOW SYMBOL A03\r
+0.4 cmd A04 | SHOW SYMBOL A04\r
+0.4 cmd A05 | SHOW SYMBOL A05\r
+0.4 cmd A06 | SHOW SYMBOL A06\r
+0.4 cmd A07 | SHOW SYMBOL A07\r
+0.4 cmd A08 | SHOW SYMBOL A08\r
+0.4 cmd A09 | SHOW SYMBOL A09\r
+0.4 cmd A10 | SHOW SYMBOL A10\r
+0.4 cmd A11 | SHOW SYMBOL A11\r
+0.4 cmd A12 | SHOW SYMBOL A12\r
+0.4 cmd A13 | SHOW SYMBOL A13\r
+0.4 cmd A14 | SHOW SYMBOL A14\r
+0.4 cmd A15 | SHOW SYMBOL A15\r
+3 log out | LOGOUT\r
+2 outer logout | LOGOUT\r

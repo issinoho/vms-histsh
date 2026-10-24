@@ -31,6 +31,7 @@
 #include <iosbdef.h>
 #include <va_rangedef.h>
 #include "hs_relay.h"
+#include "hs_hist.h"
 #include "hs_version.h"
 
 #define RBUF_OFF   0            /* PTD$ read buffer: word status, word count, data */
@@ -121,17 +122,48 @@ static void say(const char *text)            /* a HISTSH message on its own line
 
 static void sink_screen(void *ctx, const char *p, unsigned int n) { (void) ctx; tt_write(p, n); }
 
-static void sink_child(void *ctx, const char *p, unsigned int n)
+/* Bytes for the child that its terminal hasn't taken yet. PTD$WRITE reports in
+   the buffer how many it took; when the typeahead buffer is full it says
+   DATAOVERUN (seen on IA64 with a burst of keys), and the rest is sent again
+   shortly after instead of being lost (NOTES N17). */
+static char child_q[8192];
+static unsigned int child_qn;
+static void child_retry_ast(int prm);
+
+static void child_flush(void)
 {
-    (void) ctx;
-    while (n) {
-        unsigned int k = n > DATA_MAX ? DATA_MAX : n;
+    static unsigned int retry_q[2];
+    while (child_qn) {
+        unsigned int k = child_qn > DATA_MAX ? DATA_MAX : child_qn, took;
+        unsigned short *h;
         char *slot = region + WBUF_OFF + WSLOT * wslot;
         wslot = (wslot + 1) % NWSLOTS;
-        memcpy(slot + 4, p, k);
+        h = (unsigned short *) slot;
+        memcpy(slot + 4, child_q, k);
+        h[0] = 0; h[1] = 0;
         ptd$write(pty_chan, 0, 0, slot, k, 0, 0);
-        p += k; n -= k;
+        took = (h[0] & 1) || h[0] == SS$_DATAOVERUN ? h[1] : 0;
+        if (took > k) took = k;
+        memmove(child_q, child_q + took, child_qn - took);
+        child_qn -= took;
+        if (took < k) {                      /* full: try the rest again in 20 ms */
+            retry_q[0] = (unsigned int) -200000; retry_q[1] = 0xFFFFFFFFu;
+            sys$setimr(EFN$C_ENF, (struct _generic_64 *) retry_q, child_retry_ast, 2, 0);
+            return;
+        }
     }
+}
+
+static void child_retry_ast(int prm) { (void) prm; if (!child_done) child_flush(); }
+
+static void sink_child(void *ctx, const char *p, unsigned int n)
+{
+    int waiting = child_qn != 0;             /* a retry is already due */
+    (void) ctx;
+    if (n > sizeof child_q - child_qn) n = sizeof child_q - child_qn;
+    memcpy(child_q + child_qn, p, n);
+    child_qn += n;
+    if (!waiting) child_flush();
 }
 
 static void timer_ast(int prm);
@@ -146,53 +178,17 @@ static void sink_timer(void *ctx, unsigned int ms)
     sys$setimr(EFN$C_ENF, (struct _generic_64 *) timer_q, timer_ast, 1, 0);
 }
 
-/* Make `from` the history file: a new version of it, older versions removed. */
-static void replace_history(const char *from)
-{
-    struct dsc$descriptor_s d;
-    char old[270];
-    int i;
-    if (rename(from, hist_file) != 0) return;
-    sprintf(old, "%s;-1", hist_file);
-    dsc(&d, old, (unsigned short) strlen(old));
-    for (i = 0; i < 10; i++)                 /* drop the older versions, bounded */
-        if (!(lib$delete_file(&d, 0, 0, 0, 0, 0, 0, 0, 0, 0) & 1)) break;
-}
+/* ---- the shared history file (docs/C2.md) ---- */
 
-/* After a hidden RECALL/OUTPUT: keep the new file only if it was written. */
-static void finish_save(void)
-{
-    struct stat st;
-    if (stat(new_file, &st) != 0) return;
-    if (st.st_size == 0) { remove(new_file); return; }
-    replace_history(new_file);
-}
-
-/* After the start-up snapshot: the load file is the saved history followed by what
-   DCL's buffer held (any commands typed while LOGIN.COM ran), without HISTSH's
-   own boot command, cut to the newest DCL_RECALL_MAX lines (NOTES N12). */
-#define DCL_RECALL_MAX 254
+#define DCL_RECALL_MAX 254      /* most that DCL's own buffer takes (fewer if long: N13) */
 #define LINE_MAX_LEN 4100
 
-static char *lines[2 * DCL_RECALL_MAX + 2];
-static int nlines;
+static hs_hist hist;            /* what up-arrow walks through */
+static hs_lines snap;           /* DCL's buffer at the last snapshot */
+static unsigned int hist_max = 2000;
 
-static void keep_line(const char *text)
-{
-    size_t n = strlen(text);
-    char *copy;
-    if (nlines == (int) (sizeof lines / sizeof lines[0])) {   /* keep the newest */
-        free(lines[0]);
-        memmove(lines, lines + 1, sizeof lines - sizeof lines[0]);
-        nlines--;
-    }
-    copy = malloc(n + 1);
-    if (!copy) return;
-    memcpy(copy, text, n + 1);
-    lines[nlines++] = copy;
-}
-
-static void read_lines(const char *file, int skip_boot)
+/* Lines of a file, oldest first; skip_boot drops HISTSH's own boot command. */
+static void read_lines(const char *file, hs_lines *out, int skip_boot)
 {
     static char buf[LINE_MAX_LEN];
     FILE *f = fopen(file, "r");
@@ -202,27 +198,112 @@ static void read_lines(const char *file, int skip_boot)
         while (n && (buf[n - 1] == '\n' || buf[n - 1] == '\r')) buf[--n] = '\0';
         if (n == 0) continue;
         if (skip_boot && strcmp(buf, BOOT_CMD) == 0) continue;
-        keep_line(buf);
+        hs_lines_push(out, buf);
     }
     fclose(f);
 }
 
+static void owner_only(const char *file) { chmod(file, 0600); }   /* (S,O:RW,G,W) */
+
+/* Append one command to the shared file: open, append, close, retrying while
+   another session has it open (NOTES N16), for at most about a second. */
+static void append_line(const char *s)
+{
+    struct stat st;
+    int created = stat(hist_file, &st) != 0, i;
+    FILE *f = 0;
+    for (i = 0; i < 100 && !(f = fopen(hist_file, "a")); i++) {
+        float secs = 0.01f;
+        int ftype = 4;                                   /* LIB$K_IEEE_S */
+        lib$wait(&secs, 0, &ftype);
+    }
+    if (!f) return;
+    fprintf(f, "%s\n", s);
+    fclose(f);
+    if (created) owner_only(hist_file);
+}
+
+/* One of HISTSH's own commands (the boot command, or a hidden RECALL on one of its
+   files): never history, whatever DCL's buffer says. */
+static int own_command(const char *s)
+{
+    if (strcmp(s, BOOT_CMD) == 0) return 1;
+    return strncmp(s, "RECALL/", 7) == 0 && strstr(s, "HISTSH$") != 0;
+}
+
+/* A command DCL ran: into up-arrow's history and onto the end of the file. */
+static void record(const char *s)
+{
+    if (own_command(s)) return;
+    if (hs_hist_add(&hist, s)) append_line(s);
+}
+
+/* At start: the history for up-arrow is the newest hist_max lines of the file.
+   A file grown past twice that is cut back to hist_max lines. */
+static void load_history(void)
+{
+    hs_lines all;
+    unsigned int i, first;
+    hs_lines_init(&all);
+    read_lines(hist_file, &all, 1);
+    first = all.n > hist_max ? all.n - hist_max : 0;
+    for (i = first; i < all.n; i++) hs_hist_add(&hist, all.e[i]);
+    if (all.n > 2 * hist_max) {
+        struct dsc$descriptor_s d;
+        char old[270];
+        FILE *f = fopen(new_file, "w");
+        if (f) {
+            for (i = 0; i < hist.l.n; i++) fprintf(f, "%s\n", hist.l.e[i]);
+            fclose(f);
+            if (rename(new_file, hist_file) == 0) {      /* a new version, then */
+                sprintf(old, "%s;-1", hist_file);        /* drop the older ones */
+                dsc(&d, old, (unsigned short) strlen(old));
+                for (i = 0; i < 10; i++)
+                    if (!(lib$delete_file(&d, 0, 0, 0, 0, 0, 0, 0, 0, 0) & 1)) break;
+            }
+        }
+    }
+    owner_only(hist_file);
+    hs_lines_free(&all);
+}
+
+/* After the start-up snapshot: commands typed while LOGIN.COM ran are recorded
+   (NOTES N12), and the load file is the newest of the history, for DCL's own
+   buffer (the RECALL command). That is also the baseline for the next snapshot. */
 static void build_load_file(void)
 {
+    hs_lines early;
+    unsigned int i, first;
     FILE *f;
-    int i, first;
-    nlines = 0;
-    read_lines(hist_file, 1);
-    read_lines(new_file, 1);
+    hs_lines_init(&early);
+    read_lines(new_file, &early, 1);
     remove(new_file);
-    first = nlines > DCL_RECALL_MAX ? nlines - DCL_RECALL_MAX : 0;
+    for (i = 0; i < early.n; i++) record(early.e[i]);
+    hs_lines_free(&early);
+    hs_lines_free(&snap);
+    first = hist.l.n > DCL_RECALL_MAX ? hist.l.n - DCL_RECALL_MAX : 0;
     f = fopen(load_file, "w");
     if (f) {
-        for (i = first; i < nlines; i++) fprintf(f, "%s\n", lines[i]);
+        for (i = first; i < hist.l.n; i++) {
+            fprintf(f, "%s\n", hist.l.e[i]);
+            hs_lines_push(&snap, hist.l.e[i]);
+        }
         fclose(f);
     }
-    for (i = 0; i < nlines; i++) free(lines[i]);
-    nlines = 0;
+}
+
+/* After a hidden RECALL/OUTPUT: what DCL added since the last snapshot was run. */
+static void finish_save(void)
+{
+    hs_lines now;
+    unsigned int i;
+    struct stat st;
+    if (stat(new_file, &st) != 0) return;
+    hs_lines_init(&now);
+    read_lines(new_file, &now, 1);
+    remove(new_file);
+    for (i = hs_snapshot_new(&snap, &now); i < now.n; i++) record(now.e[i]);
+    hs_lines_move(&snap, &now);
 }
 
 static void sink_event(void *ctx, int ev)
@@ -230,14 +311,7 @@ static void sink_event(void *ctx, int ev)
     static int warned;
     (void) ctx;
     if (ev == HS_EV_SNAPPED) build_load_file();
-    else if (ev == HS_EV_LOADED) {
-        /* The buffer now holds exactly the load file: that is the new history,
-           so commands typed during LOGIN.COM are kept even if the user logs out
-           straight away. An empty one is just removed. */
-        struct stat st;
-        if (stat(load_file, &st) == 0 && st.st_size > 0) replace_history(load_file);
-        else remove(load_file);
-    }
+    else if (ev == HS_EV_LOADED) remove(load_file);
     else if (ev == HS_EV_SAVED) finish_save();
     else if (ev == HS_EV_TIMEOUT && !warned) {
         warned = 1;
@@ -356,6 +430,15 @@ int main(int argc, char **argv)
     set_lnm("HISTSH$LOAD", load_file);
     hs_relay_init(&relay, &sink, BOOT_CMD, "RECALL/ERASE/INPUT=HISTSH$LOAD",
                   "RECALL/OUTPUT=HISTSH$NEW");
+    {
+        char size[16];
+        if (trn_lnm("HISTSH$SIZE", size, sizeof size) && atoi(size) > 0)
+            hist_max = (unsigned int) atoi(size);
+    }
+    hs_hist_init(&hist, hist_max);
+    hs_lines_init(&snap);
+    load_history();
+    hs_relay_set_history(&relay, &hist);
 
     /* A pseudo-terminal like the real one. */
     st = sys$expreg(2, &got, 0, 0);
@@ -364,7 +447,7 @@ int main(int argc, char **argv)
     pc = tt_saved;
     pc.basic &= ~TT$M_NOECHO;
     pc.ext &= ~TT2$M_PASTHRU;
-    pc.ext |= TT2$M_EDITING;
+    pc.ext |= TT2$M_EDITING | TT2$M_ALTYPEAHD;    /* the larger typeahead buffer (N17) */
     st = ptd$create(&pty_chan, 0, &pc, sizeof pc, 0, 0, 0, &got);
     if (!(st & 1)) return st;
     dvi.len = sizeof devnam - 1; dvi.code = DVI$_DEVNAM; dvi.buf = devnam; dvi.ret = &devlen;

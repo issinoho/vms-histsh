@@ -41,3 +41,23 @@ neither SYLOGIN nor a LOGOUT wrapper can load or save the recall buffer. Conside
   own line editor, with unlimited history, Ctrl/R and one shared append file.
 - Straight to C2: nothing usable until the editor is done.
 - Manual symbols or keys (HSAVE/HLOAD, DEFINE/KEY): works today, not automatic.
+
+## D5. C2 keeps DCL's line editor and replaces only its history (2026-10-24)
+
+Considered:
+- **A whole line editor in HISTSH** (the plan's C2). HISTSH would draw and edit the
+  line itself and send DCL the finished line. That means swallowing DCL's echo of every
+  line (wrapping at the terminal width, tabs), and re-implementing every DCL editing
+  key users already know.
+- **Only the history keys (chosen).** At a fresh top-level prompt HISTSH intercepts
+  up-arrow, down-arrow, Ctrl/B and Ctrl/R. Recalling an entry sends DCL Ctrl/E Ctrl/U
+  and the entry's text (N15): DCL redraws the line and the user edits it with DCL's own
+  keys. What was actually run comes from C1's hidden `RECALL/OUTPUT` after each command,
+  compared with the previous snapshot (N14). New entries are appended at once to one
+  history file shared by all sessions (N16), with no limit but `HISTSH$SIZE`.
+  Everywhere else (continuation prompts, programs, typeahead) keys pass through, and
+  DCL's own recall still works there with the session's buffer.
+
+Ctrl/R stops being DCL's "redisplay line" at a fresh prompt (bash users expect search
+there). HISTSH uses DCL's Ctrl/R itself, to repaint the line when a search is
+cancelled.

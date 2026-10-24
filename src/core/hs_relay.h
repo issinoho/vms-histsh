@@ -5,6 +5,8 @@
 #ifndef HS_RELAY_H
 #define HS_RELAY_H
 
+#include "hs_hist.h"
+
 #define HS_MARKER "\033[?7777h"     /* both ends of the child's prompt; never shown (N9, N12) */
 
 enum hs_state { HS_BOOT, HS_BOOT_ECHO, HS_RUNNING, HS_SETTLE, HS_IDLE, HS_HIDDEN };
@@ -28,6 +30,7 @@ typedef struct hs_sink {
 } hs_sink;
 
 #define HS_HOLD_MAX 1024
+#define HS_LINE_MAX 4100     /* a DCL command line is at most about 4096 bytes */
 
 typedef struct hs_relay {
     hs_sink sink;
@@ -49,6 +52,13 @@ typedef struct hs_relay {
     char hold[HS_HOLD_MAX];  /* user keys held during BOOT and HIDDEN */
     unsigned int nhold;
     unsigned int lost;       /* keys dropped because hold[] was full */
+    /* C2 (docs/C2.md): history keys at a fresh prompt. */
+    hs_hist *hist;           /* NULL: C1 behaviour, every key to DCL */
+    int keys_ok;             /* IDLE at a fresh quiet prompt: history keys are ours */
+    char esc[3];             /* an escape sequence being read (ESC, [ or O) */
+    unsigned int nesc;
+    char shown[HS_LINE_MAX]; /* the entry HISTSH last put on the line */
+    int recall_pending;      /* shown[] still to be sent: a burst sends only the last */
 } hs_relay;
 
 void hs_relay_init(hs_relay *r, const hs_sink *sink, const char *boot_cmd,
@@ -56,5 +66,7 @@ void hs_relay_init(hs_relay *r, const hs_sink *sink, const char *boot_cmd,
 void hs_relay_child_output(hs_relay *r, const char *p, unsigned int n);
 void hs_relay_user_input(hs_relay *r, const char *p, unsigned int n);
 void hs_relay_timeout(hs_relay *r);
+/* C2: give the relay a history to recall from (NULL for C1 behaviour). */
+void hs_relay_set_history(hs_relay *r, hs_hist *h);
 
 #endif

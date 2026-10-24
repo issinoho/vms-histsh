@@ -41,6 +41,7 @@ static void start_hidden(hs_relay *r, int kind)
 }
 
 static void user_byte(hs_relay *r, char c);
+static void flush_recall(hs_relay *r);
 
 /* At a prompt, ready for the user: keys held meanwhile go to DCL now. */
 static void enter_idle(hs_relay *r)
@@ -50,9 +51,13 @@ static void enter_idle(hs_relay *r)
     r->state = HS_IDLE;
     r->typed = 0;
     r->pending = 0;
+    r->keys_ok = 1;                        /* a fresh, quiet prompt */
+    r->nesc = 0;
+    r->shown[0] = '\0';
     memcpy(tmp, r->hold, n);
     r->nhold = 0;
     for (i = 0; i < n; i++) user_byte(r, tmp[i]);
+    flush_recall(r);
 }
 
 /* DCL is at an empty top-level prompt with nothing typed ahead: the moment for a
@@ -85,7 +90,11 @@ static void on_marker(hs_relay *r)
     if (r->prev == '_') {                  /* continuation prompt: the command goes on */
         r->at_fresh = 0;
         r->settle_start = 0;
-        if (r->state == HS_RUNNING && !r->pending) { r->state = HS_IDLE; r->typed = 0; }
+        if (r->state == HS_RUNNING && !r->pending) {
+            r->state = HS_IDLE;
+            r->typed = 0;
+            r->keys_ok = 0;                /* mid-command: arrows stay DCL's */
+        }
         return;
     }
     if (!fresh) return;                    /* a redraw: ignore */
@@ -206,6 +215,93 @@ void hs_relay_child_output(hs_relay *r, const char *p, unsigned int n)
     out_flush(r, &o);
 }
 
+/* Send the line recalled last, if not yet sent. Up-arrows in one burst (a key held
+   down) send only the final line: one Ctrl/E Ctrl/U and text per key could overrun
+   the terminal's typeahead buffer. */
+static void flush_recall(hs_relay *r)
+{
+    size_t n;
+    if (!r->recall_pending) return;
+    r->recall_pending = 0;
+    n = strlen(r->shown);
+    r->sink.child(r->sink.ctx, "\005\025", 2);
+    if (n) r->sink.child(r->sink.ctx, r->shown, (unsigned int) n);
+}
+
+/* A key at the prompt that goes to DCL as it is. */
+static void idle_plain(hs_relay *r, char c)
+{
+    flush_recall(r);
+    r->sink.child(r->sink.ctx, &c, 1);
+    if (c == '\r') {
+        if (r->typed) r->dirty = 1;
+        r->state = HS_RUNNING;
+        r->pending = 0;
+        r->typed = 0;
+        r->shown[0] = '\0';
+        if (r->hist) hs_hist_reset(r->hist);
+    } else r->typed++;
+}
+
+/* Put a history entry on DCL's line: Ctrl/E and Ctrl/U clear it from wherever the
+   cursor is (NOTES N15), then the text (sent by flush_recall); DCL redraws and the
+   user edits it as usual. */
+static void recall_line(hs_relay *r, const char *text)
+{
+    size_t n = strlen(text);
+    if (n >= sizeof r->shown) n = sizeof r->shown - 1;
+    memcpy(r->shown, text, n);
+    r->shown[n] = '\0';
+    r->typed = (unsigned int) n;
+    r->recall_pending = 1;                 /* sent by flush_recall */
+}
+
+static void history_up(hs_relay *r)
+{
+    const char *t = hs_hist_prev(r->hist, r->shown[0] ? r->shown : 0);
+    if (t) recall_line(r, t);
+    else r->sink.screen(r->sink.ctx, "\007", 1);         /* nothing older: bell */
+}
+
+static void history_down(hs_relay *r)
+{
+    if (r->hist->pos >= r->hist->l.n) return;            /* not moving: nothing newer */
+    recall_line(r, hs_hist_next(r->hist, r->shown[0] ? r->shown : 0));
+}
+
+static void flush_esc(hs_relay *r)
+{
+    unsigned int i, n = r->nesc;
+    r->nesc = 0;
+    for (i = 0; i < n; i++) idle_plain(r, r->esc[i]);
+}
+
+/* A key at a fresh prompt (C2): up-arrow, down-arrow and Ctrl/B are history keys;
+   ESC [ x and ESC O x are read whole, and any sequence but A or B goes to DCL. */
+static void idle_key(hs_relay *r, char c)
+{
+    if (r->nesc == 0) {
+        if (c == '\033') { r->esc[0] = c; r->nesc = 1; return; }
+        if (c == '\002') { history_up(r); return; }    /* Ctrl/B, DCL's "recall" */
+        idle_plain(r, c);
+        return;
+    }
+    if (r->nesc == 1) {
+        if (c == '[' || c == 'O') { r->esc[1] = c; r->nesc = 2; return; }
+        flush_esc(r);
+        idle_key(r, c);
+        return;
+    }
+    r->nesc = 0;
+    if (c == 'A') { history_up(r); return; }
+    if (c == 'B') { history_down(r); return; }
+    r->nesc = 2;
+    flush_esc(r);
+    idle_plain(r, c);
+}
+
+void hs_relay_set_history(hs_relay *r, hs_hist *h) { r->hist = h; }
+
 static void user_byte(hs_relay *r, char c)
 {
     switch (r->state) {
@@ -216,13 +312,8 @@ static void user_byte(hs_relay *r, char c)
         else r->lost++;
         return;
     case HS_IDLE:
-        r->sink.child(r->sink.ctx, &c, 1);
-        if (c == '\r') {
-            if (r->typed) r->dirty = 1;
-            r->state = HS_RUNNING;
-            r->pending = 0;
-            r->typed = 0;
-        } else r->typed++;
+        if (r->hist && r->keys_ok) idle_key(r, c);
+        else idle_plain(r, c);
         return;
     case HS_SETTLE:
         r->sink.child(r->sink.ctx, &c, 1);
@@ -239,6 +330,7 @@ void hs_relay_user_input(hs_relay *r, const char *p, unsigned int n)
 {
     unsigned int i;
     for (i = 0; i < n; i++) user_byte(r, p[i]);
+    flush_recall(r);
 }
 
 void hs_relay_timeout(hs_relay *r)
@@ -253,9 +345,10 @@ void hs_relay_timeout(hs_relay *r)
             at_quiet_prompt(r);
             if (r->state == HS_IDLE) r->redraw = 0;
         } else {
-            r->state = HS_IDLE;
+            r->state = HS_IDLE;            /* DCL or a program is reading mid-line */
             r->typed = 1;
             r->pending = 0;
+            r->keys_ok = 0;
         }
         return;
     case HS_HIDDEN:

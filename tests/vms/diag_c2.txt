@@ -1,0 +1,11 @@
+# C2 probes: clearing DCL's line from anywhere; duplicates; buffer overflow.
+1 type a partial line | SHOW SYMBOL ABCDEF
+1 cursor left x3 | \e[D\e[D\e[D
+1 Ctrl/E then Ctrl/U | \x05\x15
+1 then other text and Return | WRITE SYS$OUTPUT "replaced"\r
+1 same command twice: one | SHOW TIME\r
+1 same command twice: two | SHOW TIME\r
+1 a different one | SHOW DEFAULT\r
+1.5 what DCL kept | RECALL/ALL\r
+2 fill the buffer past 254 (a loop of 260 commands via a procedure won't count: must be typed) | WRITE SYS$OUTPUT "skip"\r
+2 logout | LOGOUT\r

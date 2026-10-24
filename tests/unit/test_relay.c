@@ -263,6 +263,58 @@ static void test_timeout(void)
     expect_str("timeout: output passes again", screen + nscreen - 11, "late output");
 }
 
+/* C2: history keys at a fresh prompt (docs/C2.md). */
+static void test_history_keys(void)
+{
+    hs_relay r;
+    hs_hist h;
+    hs_hist_init(&h, 100);
+    hs_hist_add(&h, "SHOW TIME");
+    hs_hist_add(&h, "DIR");
+    reset(); boot(&r); hs_relay_set_history(&r, &h); reset();
+    keys(&r, "\033[A");                         /* up: the newest */
+    expect_str("up: line replaced", child, "\005\025DIR");
+    keys(&r, "\033OA");                         /* up in application cursor mode */
+    expect_str("up again: older", child, "\005\025DIR\005\025SHOW TIME");
+    reset();
+    keys(&r, "\033[B\033[A\033[B");             /* a burst: only the last is sent */
+    expect_str("burst: one recall sent", child, "\005\025DIR");
+    keys(&r, "\033[A");                         /* back to the oldest for what follows */
+    reset();
+    keys(&r, "\002");                           /* Ctrl/B: nothing older */
+    expect_str("Ctrl/B at the oldest: nothing sent", child, "");
+    expect_str("Ctrl/B at the oldest: bell", screen, "\007");
+    keys(&r, "\033[B");                         /* down */
+    expect_str("down: newer", child, "\005\025DIR");
+    keys(&r, "\033[B");
+    expect_str("down past the newest: empty line", child, "\005\025DIR\005\025");
+    reset();
+    keys(&r, "\033[C\033[D");                   /* right, left: DCL's */
+    expect_str("other sequences pass whole", child, "\033[C\033[D");
+    reset();
+    keys(&r, "\033[A\r");                       /* up then Return: runs, and is a command */
+    expect_str("recalled and run", child, "\005\025DIR\r");
+    expect_int("recalled: dirty", r.dirty, 1);
+    expect_int("recalled: running", r.state, HS_RUNNING);
+    hs_hist_free(&h);
+}
+
+static void test_no_history_keys_mid_command(void)
+{
+    hs_relay r;
+    hs_hist h;
+    static const char cont[] = "\r_" M "$ " M;
+    hs_hist_init(&h, 100);
+    hs_hist_add(&h, "DIR");
+    reset(); boot(&r); hs_relay_set_history(&r, &h); reset();
+    keys(&r, "WRITE SYS$OUTPUT -\r");
+    outs(&r, "WRITE SYS$OUTPUT -\r\n");
+    outs(&r, cont);                              /* continuation prompt */
+    keys(&r, "\033[A");
+    expect_str("continuation: up-arrow goes to DCL", child, "WRITE SYS$OUTPUT -\r\033[A");
+    hs_hist_free(&h);
+}
+
 int main(void)
 {
     test_boot();
@@ -276,6 +328,8 @@ int main(void)
     test_burst_redraw_while_running();
     test_split_marker_and_false_start();
     test_timeout();
+    test_history_keys();
+    test_no_history_keys_mid_command();
     printf("%d checks, %d failures\n", checks, failures);
     return failures != 0;
 }

@@ -1,0 +1,13 @@
+# C2a: shared history, appended at once; up-arrow beyond DCL's own buffer.
+6 start HISTSH | RUN HISTSH:HISTSH\r
+2 command | SHOW TIME\r
+2 command | WRITE SYS$OUTPUT "c2"\r
+2 already in the file, session still open | SEARCH C2_HISTORY.LIS "c2","SHOW TIME"\r
+2 up (expect the SEARCH) | \e[A
+2 up (expect WRITE "c2") | \e[A
+2 run it | \r
+3 150 ups at once, then Return (expect SHOW SYMBOL Z155) | \e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\e[A\r
+2 down from a fresh prompt does nothing | \e[B
+2 then a command | SHOW DEFAULT\r
+3 log out of the inner session | LOGOUT\r
+2 outer DCL: logout | LOGOUT\r

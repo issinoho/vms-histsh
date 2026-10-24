@@ -38,7 +38,8 @@ and HISTSH hands every command to DCL.)
 real SSH logins and the on-node tests in [tests/vms](tests/vms), installed from its
 PCSI kits. Limits of C1:
 
-- DCL's recall buffer holds 254 commands.
+- DCL's recall buffer holds a few kilobytes: about 190 short commands, fewer long ones
+  ([docs/NOTES.md](docs/NOTES.md) N13).
 - With several sessions open at once, each saves its own buffer, and the last to save
   wins.
 - Typing `SET PROMPT` removes the marker, and saving stops for that session.
@@ -46,8 +47,10 @@ PCSI kits. Limits of C1:
 - Each session uses two processes: the spawned DCL counts against PRCLM, and you see
   two "logged out" lines.
 
-C2, next, gives HISTSH its own line editor: no 254 limit, Ctrl/R search, and one
-history file that all your sessions append to.
+C2, in progress on `main` ([docs/C2.md](docs/C2.md)), gives up-arrow HISTSH's own history:
+no size limit but `HISTSH$SIZE`, one file that all your sessions append to after every
+command, and Ctrl/R search. DCL still edits the line. C2a (the shared file, up-arrow,
+down-arrow and Ctrl/B) is done and tested on both nodes; Ctrl/R is next.
 
 ## Installing
 
