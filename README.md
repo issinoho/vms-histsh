@@ -1,4 +1,13 @@
+<p align="center">
+  <img src="docs/images/banner.svg" alt="HISTSH for OpenVMS: a DECterm window where a new login's up-arrow brings back Friday's commands and Ctrl/R searches them, with a history clock mark" width="100%">
+</p>
+
 # vms-histsh
+
+[![Release](https://img.shields.io/github/v/release/issinoho/vms-histsh?label=release)](https://github.com/issinoho/vms-histsh/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/issinoho/vms-histsh/total?label=downloads)](https://github.com/issinoho/vms-histsh/releases)
+![OpenVMS](https://img.shields.io/badge/OpenVMS-IA64%20%7C%20x86--64-blue)
+[![License](https://img.shields.io/github/license/issinoho/vms-histsh)](LICENSE)
 
 Command history that lasts across sessions for OpenVMS, the way bash keeps
 `~/.bash_history`: log in, press up-arrow, and your commands from earlier sessions are
