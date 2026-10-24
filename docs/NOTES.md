@@ -169,3 +169,16 @@ PTYDRIVE now resends what wasn't taken, too.
 Also seen while testing: VMS file names ignore case, so `c2_A.txt` and `c2_a.txt`
 are one file (a test ran the wrong script). The scripts are now `c2_single.txt`,
 `c2_sess1.txt` and `c2_sess2.txt`.
+
+## N18. Putting the marker back after SET PROMPT (2026-10-24, x86)
+
+`SET PROMPT` replaces HISTSH's markers, so in C1 saving stopped for the session. HISTSH
+can't tell a marker-less DCL prompt from a program's output in general, and typing a
+hidden command into a program would be far worse than not saving. So it acts only when
+the line the user just ran looked like `SET PROMPT` (`SE PROM` at least: from the
+keys typed, or the entry HISTSH recalled, as long as no editing keys were used). Then a
+fresh prompt without the marker (LF NUL or LF CR NUL, then not a marker), followed by
+300 ms with nothing from either side, gets a hidden `@HISTSH:HISTSH_REMARK`. That puts
+the markers back on the new prompt, and the prompt is redrawn in place
+(`MY> <CR><ESC>[KMY> ` in `tests/vms/c2_search.txt`). Keys typed first postpone it to
+the next prompt. A prompt changed inside a command procedure isn't noticed.

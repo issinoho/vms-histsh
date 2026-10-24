@@ -56,6 +56,7 @@ $ if f$search("''mat'*.*;*") .nes. "" then delete/nolog 'mat'*.*;*
 $ copy/nolog [.BUILD]HISTSH.EXE 'mat'
 $ copy/nolog [.DCL]HISTSH_START.COM 'mat'
 $ copy/nolog [.DCL]HISTSH_CHILD.COM 'mat'
+$ copy/nolog [.DCL]HISTSH_REMARK.COM 'mat'
 $ copy/nolog [.KIT]HISTSH$STARTUP.COM 'mat'
 $ copy/nolog [.KIT]README.VMS 'mat'
 $ copy/nolog []LICENSE. 'mat'LICENSE.

@@ -1,6 +1,7 @@
 /* hs_hist.c - C2's history list and DCL snapshot comparison. Pure C99, no I/O. */
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "hs_hist.h"
 
 void hs_lines_init(hs_lines *l) { l->e = 0; l->n = l->cap = 0; }
@@ -104,4 +105,26 @@ const char *hs_hist_next(hs_hist *h, const char *shown)
     }
     h->pos = h->l.n;                            /* past the newest: an empty line */
     return "";
+}
+
+static int contains_nocase(const char *s, const char *q)
+{
+    size_t n = strlen(q);
+    if (n == 0) return 1;
+    for (; *s; s++) {
+        size_t i;
+        for (i = 0; i < n && s[i]; i++)
+            if (toupper((unsigned char) s[i]) != toupper((unsigned char) q[i])) break;
+        if (i == n) return 1;
+    }
+    return 0;
+}
+
+int hs_hist_search(const hs_hist *h, const char *q, int from)
+{
+    int i;
+    if (from >= (int) h->l.n) from = (int) h->l.n - 1;
+    for (i = from; i >= 0; i--)
+        if (contains_nocase(h->l.e[i], q)) return i;
+    return -1;
 }

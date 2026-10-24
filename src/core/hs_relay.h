@@ -9,11 +9,11 @@
 
 #define HS_MARKER "\033[?7777h"     /* both ends of the child's prompt; never shown (N9, N12) */
 
-enum hs_state { HS_BOOT, HS_BOOT_ECHO, HS_RUNNING, HS_SETTLE, HS_IDLE, HS_HIDDEN };
+enum hs_state { HS_BOOT, HS_BOOT_ECHO, HS_RUNNING, HS_SETTLE, HS_IDLE, HS_HIDDEN, HS_REPAIR };
 
 #define HS_HIDDEN_MS 5000   /* a hidden command that gets no prompt in this time is given up */
 #define HS_SETTLE_MS 300    /* quiet time that proves typeahead has all been read */
-enum hs_hidden { HS_HIDE_SNAP = 1, HS_HIDE_LOAD, HS_HIDE_SAVE };
+enum hs_hidden { HS_HIDE_SNAP = 1, HS_HIDE_LOAD, HS_HIDE_SAVE, HS_HIDE_REMARK };
 enum hs_event {
     HS_EV_SNAPPED = 1,      /* the start-up snapshot finished: build the load file now */
     HS_EV_LOADED,           /* the hidden load finished */
@@ -59,6 +59,17 @@ typedef struct hs_relay {
     unsigned int nesc;
     char shown[HS_LINE_MAX]; /* the entry HISTSH last put on the line */
     int recall_pending;      /* shown[] still to be sent: a burst sends only the last */
+    /* C2b: Ctrl/R reverse incremental search. */
+    int searching;
+    char query[256];
+    unsigned int nquery;
+    int match;               /* index in hist of the match shown, -1 for none */
+    /* C2c: putting the marker back after SET PROMPT (NOTES N18). */
+    const char *remark_cmd;  /* "@HISTSH:HISTSH_REMARK"; NULL: off */
+    char line[64];           /* the start of the line typed at the prompt */
+    unsigned int nline;
+    int line_known;          /* line[] is what DCL has (no editing keys used) */
+    int prompt_change;       /* the last line run looked like SET PROMPT */
 } hs_relay;
 
 void hs_relay_init(hs_relay *r, const hs_sink *sink, const char *boot_cmd,
@@ -68,5 +79,7 @@ void hs_relay_user_input(hs_relay *r, const char *p, unsigned int n);
 void hs_relay_timeout(hs_relay *r);
 /* C2: give the relay a history to recall from (NULL for C1 behaviour). */
 void hs_relay_set_history(hs_relay *r, hs_hist *h);
+/* C2c: the command that puts the marker back on a changed prompt (NULL: off). */
+void hs_relay_set_remark(hs_relay *r, const char *cmd);
 
 #endif

@@ -1,5 +1,6 @@
 /* hs_relay.c - the C1 relay state machine (docs/C1.md). Pure C99, no I/O. */
 #include <string.h>
+#include <ctype.h>
 #include "hs_relay.h"
 
 #define MLEN (sizeof HS_MARKER - 1)
@@ -36,12 +37,15 @@ static void start_hidden(hs_relay *r, int kind)
     r->hidden = kind;
     if (kind == HS_HIDE_SNAP) r->loaded = 1;
     if (kind == HS_HIDE_SAVE) r->dirty = 0;
-    type_cmd(r, kind == HS_HIDE_LOAD ? r->load_cmd : r->save_cmd);
+    type_cmd(r, kind == HS_HIDE_LOAD ? r->load_cmd
+               : kind == HS_HIDE_REMARK ? r->remark_cmd : r->save_cmd);
     timer(r, HS_HIDDEN_MS);
 }
 
 static void user_byte(hs_relay *r, char c);
 static void flush_recall(hs_relay *r);
+static void search_key(hs_relay *r, char c);
+static void search_draw(hs_relay *r);
 
 /* At a prompt, ready for the user: keys held meanwhile go to DCL now. */
 static void enter_idle(hs_relay *r)
@@ -52,6 +56,9 @@ static void enter_idle(hs_relay *r)
     r->typed = 0;
     r->pending = 0;
     r->keys_ok = 1;                        /* a fresh, quiet prompt */
+    r->searching = 0;
+    r->nline = 0;
+    r->line_known = 1;
     r->nesc = 0;
     r->shown[0] = '\0';
     memcpy(tmp, r->hold, n);
@@ -98,6 +105,8 @@ static void on_marker(hs_relay *r)
         return;
     }
     if (!fresh) return;                    /* a redraw: ignore */
+    if (r->state == HS_REPAIR) r->state = HS_RUNNING;   /* it had the marker after all */
+    if (r->state == HS_RUNNING) r->prompt_change = 0;
     switch (r->state) {
     case HS_BOOT:
         type_cmd(r, r->boot_cmd);
@@ -122,6 +131,16 @@ static void on_marker(hs_relay *r)
         break;
     case HS_HIDDEN:
         timer(r, 0);
+        if (r->hidden == HS_HIDE_REMARK) {
+            /* The marker is back: now the save the changed prompt held up. */
+            r->prompt_change = 0;
+            if (r->dirty) { start_hidden(r, HS_HIDE_SAVE); break; }
+            r->hidden = 0;
+            r->pending_redraw = r->redraw;
+            r->redraw = 0;
+            enter_idle(r);
+            break;
+        }
         if (r->hidden == HS_HIDE_SNAP) {
             /* The buffer so far (the boot command, and any commands typed while
                LOGIN.COM ran) is saved; the platform merges it after the history
@@ -153,6 +172,20 @@ static void plain_byte(hs_relay *r, outbuf *o, char c)
             r->pending = 0;
             timer(r, 0);
         }
+        break;
+    case HS_REPAIR:                        /* the new prompt's text: wait for quiet */
+        timer(r, HS_SETTLE_MS);
+        out_byte(r, o, c);
+        break;
+    case HS_RUNNING:
+        /* After SET PROMPT (prompt_change), DCL's fresh prompt (LF NUL or LF CR NUL,
+           N9) without the marker: put the marker back once all is quiet. */
+        if (r->prompt_change && r->remark_cmd && !r->pending && r->prev == '\0' &&
+            (r->prev2 == '\n' || (r->prev2 == '\r' && r->prev3 == '\n'))) {
+            r->state = HS_REPAIR;
+            timer(r, HS_SETTLE_MS);
+        }
+        out_byte(r, o, c);
         break;
     case HS_SETTLE:
         if (!r->settle_start) {            /* after the prompt: DCL echoing typeahead */
@@ -229,11 +262,43 @@ static void flush_recall(hs_relay *r)
 }
 
 /* A key at the prompt that goes to DCL as it is. */
+/* Does the line start SET PROMPT (abbreviated to SE PROM at the least)? */
+static int is_set_prompt(const char *s)
+{
+    char w[8];
+    unsigned int n;
+    while (*s == ' ' || *s == '\t' || *s == '$') s++;
+    for (n = 0; n < 4 && isalpha((unsigned char) s[n]); n++) w[n] = (char) toupper((unsigned char) s[n]);
+    w[n] = '\0';
+    if (strcmp(w, "SE") != 0 && strcmp(w, "SET") != 0) return 0;
+    s += n;
+    if (*s != ' ' && *s != '\t') return 0;
+    while (*s == ' ' || *s == '\t') s++;
+    for (n = 0; n < 6 && isalpha((unsigned char) s[n]); n++) w[n] = (char) toupper((unsigned char) s[n]);
+    w[n] = '\0';
+    return n >= 4 && strncmp("PROMPT", w, n) == 0;
+}
+
+static void track_line(hs_relay *r, char c)
+{
+    unsigned char u = (unsigned char) c;
+    if (u >= 0x20 && u < 0x7F) {
+        if (r->nline < sizeof r->line - 1) r->line[r->nline++] = c;
+    } else if (u == 0x7F) {
+        if (r->nline) r->nline--;
+    } else r->line_known = 0;              /* an editing key: line[] is a guess now */
+    r->line[r->nline] = '\0';
+}
+
 static void idle_plain(hs_relay *r, char c)
 {
     flush_recall(r);
     r->sink.child(r->sink.ctx, &c, 1);
+    if (c != '\r') track_line(r, c);
     if (c == '\r') {
+        r->prompt_change = r->line_known && is_set_prompt(r->line);
+        r->nline = 0;
+        r->line_known = 1;
         if (r->typed) r->dirty = 1;
         r->state = HS_RUNNING;
         r->pending = 0;
@@ -254,6 +319,10 @@ static void recall_line(hs_relay *r, const char *text)
     r->shown[n] = '\0';
     r->typed = (unsigned int) n;
     r->recall_pending = 1;                 /* sent by flush_recall */
+    r->nline = n < sizeof r->line - 1 ? (unsigned int) n : sizeof r->line - 1;
+    memcpy(r->line, text, r->nline);
+    r->line[r->nline] = '\0';
+    r->line_known = 1;
 }
 
 static void history_up(hs_relay *r)
@@ -280,7 +349,17 @@ static void flush_esc(hs_relay *r)
    ESC [ x and ESC O x are read whole, and any sequence but A or B goes to DCL. */
 static void idle_key(hs_relay *r, char c)
 {
+    if (r->searching) { search_key(r, c); return; }
     if (r->nesc == 0) {
+        if (c == '\022') {                               /* Ctrl/R: search */
+            flush_recall(r);
+            r->searching = 1;
+            r->nquery = 0;
+            r->query[0] = '\0';
+            r->match = -1;
+            search_draw(r);
+            return;
+        }
         if (c == '\033') { r->esc[0] = c; r->nesc = 1; return; }
         if (c == '\002') { history_up(r); return; }    /* Ctrl/B, DCL's "recall" */
         idle_plain(r, c);
@@ -300,7 +379,94 @@ static void idle_key(hs_relay *r, char c)
     idle_plain(r, c);
 }
 
+/* ---- Ctrl/R (docs/C2.md) ---- */
+
+/* Draw the search line over DCL's line. */
+static void search_draw(hs_relay *r)
+{
+    static const char clear[] = "\r\033[K";
+    const char *label = r->match >= 0 || r->nquery == 0 ? "(reverse-i-search)`"
+                                                       : "(failed reverse-i-search)`";
+    r->sink.screen(r->sink.ctx, clear, sizeof clear - 1);
+    r->sink.screen(r->sink.ctx, label, (unsigned int) strlen(label));
+    r->sink.screen(r->sink.ctx, r->query, r->nquery);
+    r->sink.screen(r->sink.ctx, "': ", 3);
+    if (r->match >= 0) {
+        const char *t = r->hist->l.e[r->match];
+        r->sink.screen(r->sink.ctx, t, (unsigned int) strlen(t));
+    }
+}
+
+/* Find the newest match at or before `from`; none while the search text is empty. */
+static void search_from(hs_relay *r, int from)
+{
+    r->match = r->nquery ? hs_hist_search(r->hist, r->query, from) : -1;
+}
+
+static void search_end(hs_relay *r) { r->searching = 0; }
+
+/* Clear the search line and put the match (if any) on DCL's line, then have DCL
+   repaint its prompt and line (its Ctrl/R). */
+static void search_accept(hs_relay *r)
+{
+    search_end(r);
+    r->sink.screen(r->sink.ctx, "\r\033[K", 4);        /* the search line goes */
+    if (r->match >= 0) {
+        r->hist->pos = (unsigned int) r->match;          /* up-arrow goes on from here */
+        recall_line(r, r->hist->l.e[r->match]);
+        flush_recall(r);
+    }
+    /* DCL's Ctrl/R redraws its prompt and line: on an empty line its Ctrl/U draws
+       nothing, which would leave the text after the cleared search line. */
+    r->sink.child(r->sink.ctx, "\022", 1);
+}
+
+static void search_key(hs_relay *r, char c)
+{
+    unsigned char u = (unsigned char) c;
+    if (u >= 0x20 && u < 0x7F) {                         /* narrow the search */
+        if (r->nquery < sizeof r->query - 1) {
+            r->query[r->nquery++] = c;
+            r->query[r->nquery] = '\0';
+        }
+        search_from(r, r->match >= 0 ? r->match : (int) r->hist->l.n - 1);
+        search_draw(r);
+        return;
+    }
+    switch (u) {
+    case 0x12:                                           /* Ctrl/R: next older match */
+        if (r->match > 0) {
+            int m = hs_hist_search(r->hist, r->query, r->match - 1);
+            if (m >= 0) r->match = m;
+            else r->sink.screen(r->sink.ctx, "\007", 1);
+        } else if (r->match < 0 && r->nquery == 0 && r->hist->l.n) {
+            r->match = (int) r->hist->l.n - 1;           /* Ctrl/R Ctrl/R: the newest */
+        }
+        search_draw(r);
+        return;
+    case 0x7F:                                           /* Delete: shorten */
+        if (r->nquery) r->query[--r->nquery] = '\0';
+        search_from(r, (int) r->hist->l.n - 1);
+        search_draw(r);
+        return;
+    case 0x07:                                           /* Ctrl/G, Ctrl/C: cancel */
+    case 0x03:
+        r->match = -1;
+        search_accept(r);
+        return;
+    case '\r':                                           /* run the match */
+        search_accept(r);
+        idle_plain(r, '\r');
+        return;
+    default:                                             /* edit it: ESC, arrows, ... */
+        search_accept(r);
+        idle_key(r, c);
+        return;
+    }
+}
+
 void hs_relay_set_history(hs_relay *r, hs_hist *h) { r->hist = h; }
+void hs_relay_set_remark(hs_relay *r, const char *cmd) { r->remark_cmd = cmd; }
 
 static void user_byte(hs_relay *r, char c)
 {
@@ -314,6 +480,12 @@ static void user_byte(hs_relay *r, char c)
     case HS_IDLE:
         if (r->hist && r->keys_ok) idle_key(r, c);
         else idle_plain(r, c);
+        return;
+    case HS_REPAIR:                        /* the user typed first: try next time */
+        timer(r, 0);
+        r->state = HS_RUNNING;
+        r->sink.child(r->sink.ctx, &c, 1);
+        r->pending = 1;
         return;
     case HS_SETTLE:
         r->sink.child(r->sink.ctx, &c, 1);
@@ -336,6 +508,10 @@ void hs_relay_user_input(hs_relay *r, const char *p, unsigned int n)
 void hs_relay_timeout(hs_relay *r)
 {
     switch (r->state) {
+    case HS_REPAIR:                        /* quiet at the changed prompt */
+        r->redraw = 1;
+        start_hidden(r, HS_HIDE_REMARK);
+        return;
     case HS_SETTLE:
         /* Quiet for HS_SETTLE_MS. At an empty fresh prompt: go ahead, redrawing
            the prompt that is already on the screen. Otherwise DCL (or a program)

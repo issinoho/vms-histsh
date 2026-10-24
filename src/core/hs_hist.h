@@ -40,5 +40,8 @@ int hs_hist_add(hs_hist *h, const char *s);
 const char *hs_hist_prev(hs_hist *h, const char *shown);
 const char *hs_hist_next(hs_hist *h, const char *shown);
 void hs_hist_reset(hs_hist *h);                          /* stop moving (Return) */
+/* Ctrl/R: the newest entry at or before index `from` that contains q, ignoring case
+   (DCL does). -1 if none. */
+int hs_hist_search(const hs_hist *h, const char *q, int from);
 
 #endif

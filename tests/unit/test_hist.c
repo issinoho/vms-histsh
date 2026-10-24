@@ -90,10 +90,27 @@ static void test_hist(void)
     hs_hist_free(&h);
 }
 
+static void test_search(void)
+{
+    hs_hist h;
+    hs_hist_init(&h, 10);
+    hs_hist_add(&h, "DIRECTORY/SIZE");
+    hs_hist_add(&h, "SHOW TIME");
+    hs_hist_add(&h, "dir [.sub]");
+    expect_int("search newest", hs_hist_search(&h, "DIR", 99), 2);
+    expect_int("search ignores case", hs_hist_search(&h, "Sub", 99), 2);
+    expect_int("search older", hs_hist_search(&h, "dir", 1), 0);
+    expect_int("search none", hs_hist_search(&h, "XYZ", 99), -1);
+    expect_int("search empty text matches", hs_hist_search(&h, "", 99), 2);
+    expect_int("search from before the start", hs_hist_search(&h, "DIR", -1), -1);
+    hs_hist_free(&h);
+}
+
 int main(void)
 {
     test_snapshot();
     test_hist();
+    test_search();
     printf("%d checks, %d failures\n", checks, failures);
     return failures != 0;
 }

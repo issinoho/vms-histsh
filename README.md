@@ -47,10 +47,16 @@ PCSI kits. Limits of C1:
 - Each session uses two processes: the spawned DCL counts against PRCLM, and you see
   two "logged out" lines.
 
-C2, in progress on `main` ([docs/C2.md](docs/C2.md)), gives up-arrow HISTSH's own history:
-no size limit but `HISTSH$SIZE`, one file that all your sessions append to after every
-command, and Ctrl/R search. DCL still edits the line. C2a (the shared file, up-arrow,
-down-arrow and Ctrl/B) is done and tested on both nodes; Ctrl/R is next.
+**On `main` since 0.1.0: C2** ([docs/C2.md](docs/C2.md)), done and tested on both nodes,
+to be released as 0.2.0. Up-arrow uses HISTSH's own history instead of DCL's buffer:
+
+- one history file shared by all your sessions, appended to after every command, with no
+  limit but `HISTSH$SIZE` (default 2000);
+- up-arrow, down-arrow and Ctrl/B walk through it at the prompt, and DCL still edits the
+  line;
+- Ctrl/R searches it, as in bash: Return runs the match, Escape or an arrow key puts it
+  on the line, Ctrl/G cancels;
+- `SET PROMPT` typed at the prompt no longer stops saving: HISTSH puts its marker back.
 
 ## Installing
 

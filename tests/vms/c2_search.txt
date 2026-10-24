@@ -1,0 +1,19 @@
+# C2b: Ctrl/R search, and history after SET PROMPT.
+6 start HISTSH | RUN HISTSH:HISTSH\r
+1.5 command | WRITE SYS$OUTPUT "alpha"\r
+1.5 command | SHOW TIME\r
+1.5 command | WRITE SYS$OUTPUT "beta"\r
+1.5 Ctrl/R alp (expect the search line, alpha) | \x12alp
+2 Return runs it (expect alpha) | \r
+1.5 Ctrl/R tim, then right-arrow: edit (expect SHOW TIME on the line) | \x12tim\e[C
+2 Return | \r
+1.5 Ctrl/R xyz (failed) | \x12xyz
+1.5 Ctrl/G cancels | \x07
+2 a command | SHOW DEFAULT\r
+3 SET PROMPT (marker gone, HISTSH puts it back) | SET PROMPT="MY> "\r
+2 a command at the new prompt | WRITE SYS$OUTPUT "after"\r
+2 up-arrow works at the new prompt (expect the WRITE "after") | \e[A
+1.5 clear the line | \x05\x15
+3 log out of the inner session | LOGOUT\r
+2 the file | TYPE C2_SEARCH.LIS\r
+2 outer logout | LOGOUT\r

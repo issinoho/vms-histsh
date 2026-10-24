@@ -315,6 +315,102 @@ static void test_no_history_keys_mid_command(void)
     hs_hist_free(&h);
 }
 
+/* C2b: Ctrl/R reverse incremental search. */
+static void test_search_keys(void)
+{
+    hs_relay r;
+    hs_hist h;
+    hs_hist_init(&h, 100);
+    hs_hist_add(&h, "DIRECTORY/SIZE");
+    hs_hist_add(&h, "SHOW TIME");
+    hs_hist_add(&h, "DIR [.SUB]");
+    reset(); boot(&r); hs_relay_set_history(&r, &h); reset();
+    keys(&r, "\022");
+    expect_str("Ctrl/R: prompt drawn, nothing to DCL", child, "");
+    expect_str("Ctrl/R: search line", screen, "\r\033[K(reverse-i-search)`': ");
+    reset();
+    keys(&r, "di");
+    expect_str("typing narrows (case ignored)", screen + nscreen - strlen("(reverse-i-search)`di': DIR [.SUB]"),
+               "(reverse-i-search)`di': DIR [.SUB]");
+    keys(&r, "\022");                          /* older match */
+    expect_str("Ctrl/R again: older match", screen + nscreen - strlen("DIRECTORY/SIZE"), "DIRECTORY/SIZE");
+    expect_str("still nothing to DCL", child, "");
+    reset();
+    keys(&r, "\r");                            /* run it */
+    expect_str("Return runs the match", child, "\005\025DIRECTORY/SIZE\022\r");
+    expect_int("Return: running", r.state, HS_RUNNING);
+    expect_int("Return: a command", r.dirty, 1);
+    hs_hist_free(&h);
+}
+
+static void test_search_edit_and_cancel(void)
+{
+    hs_relay r;
+    hs_hist h;
+    hs_hist_init(&h, 100);
+    hs_hist_add(&h, "SHOW TIME");
+    hs_hist_add(&h, "DIR");
+    reset(); boot(&r); hs_relay_set_history(&r, &h); reset();
+    keys(&r, "\022TIME\033[D");                /* left-arrow: accept, then edit */
+    expect_str("arrow accepts to edit", child, "\005\025SHOW TIME\022\033[D");
+    expect_int("accepted: not searching", r.searching, 0);
+    reset();
+    keys(&r, "\022XYZ");
+    expect_str("no match: failed search shown", screen + nscreen - strlen("(failed reverse-i-search)`XYZ': "),
+               "(failed reverse-i-search)`XYZ': ");
+    keys(&r, "\007");                           /* Ctrl/G: cancel */
+    expect_str("cancel: DCL repaints its line", child, "\022");
+    expect_int("cancel: idle", r.state, HS_IDLE);
+    reset();
+    keys(&r, "\022D\177");                     /* Delete shortens to nothing */
+    expect_str("delete: back to the empty search", screen + nscreen - strlen("(reverse-i-search)`': "),
+               "(reverse-i-search)`': ");
+    hs_hist_free(&h);
+}
+
+/* C2c: after SET PROMPT the prompt has no marker; HISTSH puts it back. */
+static void test_marker_repair(void)
+{
+    hs_relay r;
+    hs_hist h;
+    hs_hist_init(&h, 100);
+    reset(); boot(&r); hs_relay_set_history(&r, &h); hs_relay_set_remark(&r, "@HISTSH:HISTSH_REMARK"); reset();
+    keys(&r, "set prom \"X> \"\r");
+    expect_int("SET PROMPT seen", r.prompt_change, 1);
+    outs(&r, "set prom \"X> \"\r\n");
+    out(&r, "\r\0X> ", 5);                     /* the new prompt: no marker */
+    expect_int("bare prompt: waiting for quiet", r.state, HS_REPAIR);
+    hs_relay_timeout(&r);
+    expect_str("quiet: remark typed", child, "set prom \"X> \"\r@HISTSH:HISTSH_REMARK\r");
+    outs(&r, "@HISTSH:HISTSH_REMARK\r\n");
+    out(&r, "\r\0" M "X> " M, 5 + 2 * (sizeof M - 1));
+    expect_str("marker back: then the save", child,
+               "set prom \"X> \"\r@HISTSH:HISTSH_REMARK\rRECALL/OUTPUT=HISTSH$NEW\r");
+    nscreen = 0; screen[0] = '\0';
+    outs(&r, "RECALL/OUTPUT=HISTSH$NEW\r\n");
+    out(&r, "\r\0" M "X> " M, 5 + 2 * (sizeof M - 1));
+    expect_str("prompt redrawn in place", screen, "\r\033[KX> ");
+    expect_int("repaired: idle, history keys back", r.state == HS_IDLE && r.keys_ok, 1);
+    hs_hist_free(&h);
+}
+
+static void test_no_repair_without_set_prompt(void)
+{
+    hs_relay r;
+    reset(); boot(&r); hs_relay_set_remark(&r, "@HISTSH:HISTSH_REMARK"); reset();
+    keys(&r, "RUN PROG\r");                     /* not SET PROMPT */
+    outs(&r, "RUN PROG\r\n");
+    out(&r, "\r\0Name? ", 8);                  /* a prompt-like line from a program */
+    expect_int("no SET PROMPT: no repair", r.state, HS_RUNNING);
+    reset(); boot(&r); hs_relay_set_remark(&r, "@HISTSH:HISTSH_REMARK"); reset();
+    keys(&r, "SET PROMPT=\"Y> \"\r");
+    outs(&r, "SET PROMPT=\"Y> \"\r\n");
+    out(&r, "\r\0Y> ", 5);
+    keys(&r, "D");                              /* typed first: try again later */
+    expect_int("typed first: running", r.state, HS_RUNNING);
+    expect_str("typed first: no remark", child, "SET PROMPT=\"Y> \"\rD");
+}
+
 int main(void)
 {
     test_boot();
@@ -330,6 +426,10 @@ int main(void)
     test_timeout();
     test_history_keys();
     test_no_history_keys_mid_command();
+    test_search_keys();
+    test_search_edit_and_cancel();
+    test_marker_repair();
+    test_no_repair_without_set_prompt();
     printf("%d checks, %d failures\n", checks, failures);
     return failures != 0;
 }

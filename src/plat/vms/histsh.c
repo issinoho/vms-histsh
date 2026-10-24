@@ -40,6 +40,7 @@
 #define NWSLOTS    8
 #define DATA_MAX   (WSLOT - 4)
 #define BOOT_CMD   "@HISTSH:HISTSH_CHILD"   /* typed at the first prompt; never kept */
+#define REMARK_CMD "@HISTSH:HISTSH_REMARK"  /* typed after SET PROMPT; never kept */
 
 typedef struct { unsigned char cls, type; unsigned short width;
                  unsigned int basic, ext; } termchars;
@@ -223,11 +224,11 @@ static void append_line(const char *s)
     if (created) owner_only(hist_file);
 }
 
-/* One of HISTSH's own commands (the boot command, or a hidden RECALL on one of its
-   files): never history, whatever DCL's buffer says. */
+/* One of HISTSH's own commands (the boot or remark command, or a hidden RECALL on one
+   of its files): never history, whatever DCL's buffer says. */
 static int own_command(const char *s)
 {
-    if (strcmp(s, BOOT_CMD) == 0) return 1;
+    if (strcmp(s, BOOT_CMD) == 0 || strcmp(s, REMARK_CMD) == 0) return 1;
     return strncmp(s, "RECALL/", 7) == 0 && strstr(s, "HISTSH$") != 0;
 }
 
@@ -439,6 +440,7 @@ int main(int argc, char **argv)
     hs_lines_init(&snap);
     load_history();
     hs_relay_set_history(&relay, &hist);
+    hs_relay_set_remark(&relay, REMARK_CMD);
 
     /* A pseudo-terminal like the real one. */
     st = sys$expreg(2, &got, 0, 0);
