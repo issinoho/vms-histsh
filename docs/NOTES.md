@@ -100,3 +100,25 @@ now sets the local symbol `HISTSH_PROMPT = F$ENVIRONMENT("PROMPT")`, and HISTSH 
 with LIB$GET_SYMBOL (an exact string, so no quoting) and spawns with marker + that.
 Verified on x86 and IA64 with tests/vms/c1_prompt.txt (`TESTNODE::`, and
 `_TESTNODE::` on a continuation line).
+
+## N12. Commands typed during login, and typeahead in general (2026-10-24, IA64 rehearsal)
+
+On IA64, SYLOGIN's `SET TERMINAL/INQUIRE` makes login take seconds, and a command
+typed before the first prompt was lost. HISTSH held back its hidden load while the
+user had typed ahead (correctly), but when the load came, its `RECALL/ERASE` wiped
+what the user had entered. Three changes:
+- **Snapshot, then load.** The first hidden command is now `RECALL/OUTPUT=HISTSH$NEW`.
+  HISTSH merges that after the saved history (dropping its own `@HISTSH:HISTSH_CHILD`,
+  keeping the newest 254) into `HISTSH$LOAD`, loads that with `RECALL/ERASE/INPUT`, and
+  makes it the new history file straight away.
+- **Settle on typeahead.** Counting the user's Returns can't tell DCL typeahead from
+  input a program took (Returns typed in EDT). So if the user typed while a command
+  ran, HISTSH waits, at the next fresh prompt, for 300 ms with nothing from either
+  side before typing anything hidden. Typeahead that DCL has yet to read always
+  produces output (its echo, then its own output), which restarts the wait. The
+  prompt is already on the screen then, so after the hidden command the next prompt is
+  drawn over it (`<CR><ESC>[K`).
+- **The marker at both ends of the prompt** (`marker + prompt + marker`). Without
+  knowing the prompt's text, HISTSH couldn't tell the prompt from DCL echoing typeahead
+  after it. A start marker follows NUL or `_`; an end marker follows the prompt's last
+  character.

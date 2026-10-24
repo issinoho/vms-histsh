@@ -10,6 +10,7 @@
    are serialised, so the relay (src/core/hs_relay.c) never sees two callers. */
 #define __NEW_STARLET 1
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stat.h>
 #include <unixio.h>
@@ -36,7 +37,7 @@
 #define WSLOT      512
 #define NWSLOTS    8
 #define DATA_MAX   (WSLOT - 4)
-#define HIDDEN_TIMEOUT_100NS 50000000   /* 5 s */
+#define BOOT_CMD   "@HISTSH:HISTSH_CHILD"   /* typed at the first prompt; never kept */
 
 typedef struct { unsigned char cls, type; unsigned short width;
                  unsigned int basic, ext; } termchars;
@@ -52,7 +53,7 @@ static volatile int child_done;
 static unsigned int child_status, child_pid;
 static char tt_buf[256];
 static IOSB tt_iosb;
-static char hist_file[256], new_file[256];
+static char hist_file[256], new_file[256], load_file[256];
 static unsigned int timer_q[2];
 
 /* ---- small helpers ---- */
@@ -134,34 +135,109 @@ static void sink_child(void *ctx, const char *p, unsigned int n)
 
 static void timer_ast(int prm);
 
-static void sink_timer(void *ctx, int on)
+static void sink_timer(void *ctx, unsigned int ms)
 {
     (void) ctx;
     sys$cantim(1, 0);
-    if (on) sys$setimr(EFN$C_ENF, (struct _generic_64 *) timer_q, timer_ast, 1, 0);
+    if (ms == 0) return;
+    timer_q[0] = (unsigned int) -(int) (ms * 10000u);       /* relative: negative 100 ns */
+    timer_q[1] = 0xFFFFFFFFu;
+    sys$setimr(EFN$C_ENF, (struct _generic_64 *) timer_q, timer_ast, 1, 0);
 }
 
-/* After a hidden RECALL/OUTPUT: keep the new file only if it was written. */
-static void finish_save(void)
+/* Make `from` the history file: a new version of it, older versions removed. */
+static void replace_history(const char *from)
 {
-    struct stat st;
     struct dsc$descriptor_s d;
     char old[270];
     int i;
-    if (stat(new_file, &st) != 0) return;
-    if (st.st_size == 0) { remove(new_file); return; }
-    if (rename(new_file, hist_file) != 0) return;
+    if (rename(from, hist_file) != 0) return;
     sprintf(old, "%s;-1", hist_file);
     dsc(&d, old, (unsigned short) strlen(old));
     for (i = 0; i < 10; i++)                 /* drop the older versions, bounded */
         if (!(lib$delete_file(&d, 0, 0, 0, 0, 0, 0, 0, 0, 0) & 1)) break;
 }
 
+/* After a hidden RECALL/OUTPUT: keep the new file only if it was written. */
+static void finish_save(void)
+{
+    struct stat st;
+    if (stat(new_file, &st) != 0) return;
+    if (st.st_size == 0) { remove(new_file); return; }
+    replace_history(new_file);
+}
+
+/* After the start-up snapshot: the load file is the saved history followed by what
+   DCL's buffer held (any commands typed while LOGIN.COM ran), without HISTSH's
+   own boot command, cut to the newest DCL_RECALL_MAX lines (NOTES N12). */
+#define DCL_RECALL_MAX 254
+#define LINE_MAX_LEN 4100
+
+static char *lines[2 * DCL_RECALL_MAX + 2];
+static int nlines;
+
+static void keep_line(const char *text)
+{
+    size_t n = strlen(text);
+    char *copy;
+    if (nlines == (int) (sizeof lines / sizeof lines[0])) {   /* keep the newest */
+        free(lines[0]);
+        memmove(lines, lines + 1, sizeof lines - sizeof lines[0]);
+        nlines--;
+    }
+    copy = malloc(n + 1);
+    if (!copy) return;
+    memcpy(copy, text, n + 1);
+    lines[nlines++] = copy;
+}
+
+static void read_lines(const char *file, int skip_boot)
+{
+    static char buf[LINE_MAX_LEN];
+    FILE *f = fopen(file, "r");
+    if (!f) return;
+    while (fgets(buf, sizeof buf, f)) {
+        size_t n = strlen(buf);
+        while (n && (buf[n - 1] == '\n' || buf[n - 1] == '\r')) buf[--n] = '\0';
+        if (n == 0) continue;
+        if (skip_boot && strcmp(buf, BOOT_CMD) == 0) continue;
+        keep_line(buf);
+    }
+    fclose(f);
+}
+
+static void build_load_file(void)
+{
+    FILE *f;
+    int i, first;
+    nlines = 0;
+    read_lines(hist_file, 1);
+    read_lines(new_file, 1);
+    remove(new_file);
+    first = nlines > DCL_RECALL_MAX ? nlines - DCL_RECALL_MAX : 0;
+    f = fopen(load_file, "w");
+    if (f) {
+        for (i = first; i < nlines; i++) fprintf(f, "%s\n", lines[i]);
+        fclose(f);
+    }
+    for (i = 0; i < nlines; i++) free(lines[i]);
+    nlines = 0;
+}
+
 static void sink_event(void *ctx, int ev)
 {
     static int warned;
     (void) ctx;
-    if (ev == HS_EV_SAVED) finish_save();
+    if (ev == HS_EV_SNAPPED) build_load_file();
+    else if (ev == HS_EV_LOADED) {
+        /* The buffer now holds exactly the load file: that is the new history,
+           so commands typed during LOGIN.COM are kept even if the user logs out
+           straight away. An empty one is just removed. */
+        struct stat st;
+        if (stat(load_file, &st) == 0 && st.st_size > 0) replace_history(load_file);
+        else remove(load_file);
+    }
+    else if (ev == HS_EV_SAVED) finish_save();
     else if (ev == HS_EV_TIMEOUT && !warned) {
         warned = 1;
         say("%HISTSH-W-NOPROMPT, DCL's prompt was not seen; history may not be saved");
@@ -245,17 +321,13 @@ int main(void)
     struct _va_range got;
     termchars pc, raw;
     struct dsc$descriptor_s d_tt, d_dev, d_prompt;
-    char devnam[64], prompt[300], user_prompt[256], pidhex[16], load_cmd[64];
+    char devnam[64], prompt[320], user_prompt[256], pidhex[16];
     unsigned short devlen = 0;
     struct { unsigned short len, code; void *buf; unsigned short *ret; unsigned int end; } dvi;
     IOSB iosb;
     unsigned int st, flags = 1;                              /* CLI$M_NOWAIT */
     unsigned int ctrl_off = LIB$M_CLI_CTRLY | LIB$M_CLI_CTRLT;
     static const hs_sink sink = { sink_screen, sink_child, sink_event, sink_timer, 0 };
-    struct stat sb;
-
-    timer_q[0] = (unsigned int) -HIDDEN_TIMEOUT_100NS;      /* relative time: negative */
-    timer_q[1] = 0xFFFFFFFFu;
 
     /* The user's terminal. */
     dsc(&d_tt, "SYS$COMMAND", 11);
@@ -270,13 +342,14 @@ int main(void)
         strcpy(hist_file, "SYS$LOGIN:HISTSH_HISTORY.LIS");
     sprintf(pidhex, "%08X", (unsigned int) getpid());
     sprintf(new_file, "%s_%s", hist_file, pidhex);
+    sprintf(load_file, "%s_L%s", hist_file, pidhex);
     set_lnm("HISTSH$CHILD", pidhex);
     set_lnm("HISTSH$MARKER", HS_MARKER);
     set_lnm("HISTSH$FILE", hist_file);
     set_lnm("HISTSH$NEW", new_file);
-    strcpy(load_cmd, stat(hist_file, &sb) == 0 ? "RECALL/ERASE/INPUT=HISTSH$FILE"
-                                                : "RECALL/ERASE");
-    hs_relay_init(&relay, &sink, "@HISTSH:HISTSH_CHILD", load_cmd, "RECALL/OUTPUT=HISTSH$NEW");
+    set_lnm("HISTSH$LOAD", load_file);
+    hs_relay_init(&relay, &sink, BOOT_CMD, "RECALL/ERASE/INPUT=HISTSH$LOAD",
+                  "RECALL/OUTPUT=HISTSH$NEW");
 
     /* A pseudo-terminal like the real one. */
     st = sys$expreg(2, &got, 0, 0);
@@ -310,7 +383,7 @@ int main(void)
     pty_post_read();
     dsc(&d_dev, devnam, devlen);
     get_prompt(user_prompt, sizeof user_prompt);
-    sprintf(prompt, "%s%s", HS_MARKER, user_prompt);
+    sprintf(prompt, "%s%s%s", HS_MARKER, user_prompt, HS_MARKER);   /* both ends: N12 */
     dsc(&d_prompt, prompt, (unsigned short) strlen(prompt));
     st = lib$spawn(0, &d_dev, &d_dev, &flags, 0, &child_pid, &child_status, 0,
                    done_ast, 0, &d_prompt, 0, 0);

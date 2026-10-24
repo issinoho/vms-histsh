@@ -1,0 +1,9 @@
+# A command typed while LOGIN.COM still runs is kept (IA64 rehearsal, 2026-10-24).
+0.3 start HISTSH | RUN HISTSH:HISTSH\r
+6 typed at once, before the first prompt | SHOW TIME\r
+2 recall all (expect SHOW TIME and session 1's) | RECALL/ALL\r
+2 a command after the load | WRITE SYS$OUTPUT "after"\r
+3 log out of the inner session | LOGOUT\r
+2 saved | TYPE C1_HISTORY.LIS\r
+1 versions and leftovers | DIRECTORY C1_HISTORY.*\r
+2 outer logout | LOGOUT\r

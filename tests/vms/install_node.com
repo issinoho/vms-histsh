@@ -1,5 +1,5 @@
-$! install_x86.com - put HISTSH in place by hand (until the PCSI kit), as the
-$! user approved on 2026-10-24: files in SYS$COMMON:[HISTSH], the startup in
+$! install_node.com - put HISTSH in place by hand (until the PCSI kit), as the
+$! user approved on 2026-10-24 (x86, then IA64): files in SYS$COMMON:[HISTSH], the startup in
 $! SYS$STARTUP, the logicals defined, and the identifier granted to IAIN.
 $! Run from the work directory after build_vms.com.
 $ set noon

@@ -2,7 +2,7 @@ $! HISTSH_CHILD.COM - first command of the child DCL that HISTSH runs.
 $!
 $! HISTSH types it at the child's first prompt. It runs the user's LOGIN.COM (a
 $! spawned DCL doesn't), then puts HISTSH's marker back on whatever prompt
-$! LOGIN.COM chose, because HISTSH finds DCL's prompt by that marker (docs/C1.md).
+$! LOGIN.COM chose, at both ends, because HISTSH finds DCL's prompt by it (docs/C1.md).
 $!
 $ set noon
 $ if f$search("SYS$LOGIN:LOGIN.COM") .nes. "" then @SYS$LOGIN:LOGIN.COM
@@ -22,6 +22,6 @@ $   histsh_q = histsh_q + histsh_c
 $   histsh_i = histsh_i + 1
 $   if histsh_i .lt. 255 then goto histsh_loop
 $ histsh_set:
-$ set prompt="''histsh_m'''histsh_q'"
+$ set prompt="''histsh_m'''histsh_q'''histsh_m'"     ! marker at both ends (N12)
 $ histsh_done:
 $ exit 1 + 0*f$verify(histsh_v)

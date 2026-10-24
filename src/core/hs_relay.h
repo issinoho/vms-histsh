@@ -5,12 +5,16 @@
 #ifndef HS_RELAY_H
 #define HS_RELAY_H
 
-#define HS_MARKER "\033[?7777h"     /* in the child's prompt; never shown (NOTES N9) */
+#define HS_MARKER "\033[?7777h"     /* both ends of the child's prompt; never shown (N9, N12) */
 
-enum hs_state { HS_BOOT, HS_BOOT_ECHO, HS_RUNNING, HS_IDLE, HS_HIDDEN };
-enum hs_hidden { HS_HIDE_LOAD = 1, HS_HIDE_SAVE = 2 };
+enum hs_state { HS_BOOT, HS_BOOT_ECHO, HS_RUNNING, HS_SETTLE, HS_IDLE, HS_HIDDEN };
+
+#define HS_HIDDEN_MS 5000   /* a hidden command that gets no prompt in this time is given up */
+#define HS_SETTLE_MS 300    /* quiet time that proves typeahead has all been read */
+enum hs_hidden { HS_HIDE_SNAP = 1, HS_HIDE_LOAD, HS_HIDE_SAVE };
 enum hs_event {
-    HS_EV_LOADED = 1,       /* the hidden load finished */
+    HS_EV_SNAPPED = 1,      /* the start-up snapshot finished: build the load file now */
+    HS_EV_LOADED,           /* the hidden load finished */
     HS_EV_SAVED,            /* the hidden save finished: check the file and rename it */
     HS_EV_TIMEOUT           /* a hidden command got no prompt in time */
 };
@@ -19,7 +23,7 @@ typedef struct hs_sink {
     void (*screen)(void *ctx, const char *p, unsigned int n);   /* to the user */
     void (*child)(void *ctx, const char *p, unsigned int n);    /* to the child DCL */
     void (*event)(void *ctx, int ev);
-    void (*timer)(void *ctx, int on);   /* start (1) or cancel (0) the hidden timeout */
+    void (*timer)(void *ctx, unsigned int ms);   /* (re)start the one timer; 0 cancels */
     void *ctx;
 } hs_sink;
 
@@ -28,13 +32,17 @@ typedef struct hs_sink {
 typedef struct hs_relay {
     hs_sink sink;
     const char *boot_cmd;    /* typed at the first prompt, e.g. "@HISTSH:HISTSH_CHILD" */
-    const char *load_cmd;    /* "RECALL/ERASE/INPUT=HISTSH$FILE" or "RECALL/ERASE" */
-    const char *save_cmd;    /* "RECALL/OUTPUT=HISTSH$NEW" */
+    const char *load_cmd;    /* "RECALL/ERASE/INPUT=HISTSH$LOAD" */
+    const char *save_cmd;    /* "RECALL/OUTPUT=HISTSH$NEW", also the start-up snapshot */
     int state;
     int hidden;              /* enum hs_hidden while HS_HIDDEN */
     int loaded;              /* the hidden load has been typed */
     int dirty;               /* a command was entered since the last save */
-    unsigned int ahead;      /* user bytes sent while RUNNING: typeahead */
+    int pending;             /* the user typed while RUNNING */
+    int at_fresh;            /* SETTLE: the last thing DCL sent was a whole fresh prompt */
+    int settle_start;        /* SETTLE: a fresh prompt's start marker seen, not its end */
+    int redraw;              /* this hidden command was typed at a prompt on the screen */
+    int pending_redraw;      /* so draw the next prompt over it */
     unsigned int typed;      /* user bytes sent at the current prompt */
     unsigned int mpos;       /* bytes of HS_MARKER matched and held back */
     char prev, prev2, prev3; /* the last three output bytes before any held ones */
