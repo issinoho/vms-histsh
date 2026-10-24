@@ -1,0 +1,21 @@
+=product @PRODUCER@ @BASE@ HISTSH @PCSIVERSION@ full
+1 'PRODUCER
+=prompt @PRODUCER@
+1 'PRODUCT
+=prompt HISTSH @VERSION@ for OpenVMS (vms-histsh): DCL command history across sessions, early test
+1 'NOTICE
+=prompt HISTSH is distributed under the MIT licence. This is an early test release.
+1 RELEASE_NOTES
+=prompt Documentation is in [HISTSH]README.VMS under the installation directory.
+1 POST_INSTALL
+=prompt Post-installation tasks for HISTSH (vms-histsh)
+    At boot, add to SYS$MANAGER:SYSTARTUP_VMS.COM:
+    $ @SYS$STARTUP:HISTSH$STARTUP.COM
+    At login, add as the LAST line of SYS$MANAGER:SYLOGIN.COM:
+    $ IF F$SEARCH("HISTSH:HISTSH_START.COM") .NES. "" THEN @HISTSH:HISTSH_START
+    For each user, with AUTHORIZE (ADD/IDENTIFIER once):
+    UAF> ADD/IDENTIFIER HISTSH$USER
+    UAF> GRANT/IDENTIFIER HISTSH$USER username
+
+PRODUCT REMOVE HISTSH deassigns HISTSH$ROOT and HISTSH; users' history files
+are kept. Take the SYLOGIN line out first, or it just finds nothing to run.

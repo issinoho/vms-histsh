@@ -1,7 +1,7 @@
 /* histsh.c - HISTSH C1: run DCL on a pseudo-terminal and keep its recall buffer
    saved across sessions (docs/C1.md).
 
-   Started by HISTSH_START.COM at the end of SYLOGIN. Returns SS$_NORMAL once the
+   Started by HISTSH_START.COM at the end of SYLOGIN. "HISTSH -v" prints the version. Returns SS$_NORMAL once the
    child DCL has logged out, or an error if it could not start the child, in which
    case the login carries on as plain DCL.
 
@@ -31,6 +31,7 @@
 #include <iosbdef.h>
 #include <va_rangedef.h>
 #include "hs_relay.h"
+#include "hs_version.h"
 
 #define RBUF_OFF   0            /* PTD$ read buffer: word status, word count, data */
 #define WBUF_OFF   1024         /* PTD$ write slots, WSLOT bytes each */
@@ -316,7 +317,7 @@ static struct { unsigned int link; void (*handler)(void); unsigned int argc;
 
 static void exit_handler(void) { restore(); if (pty_chan) ptd$delete(pty_chan); }
 
-int main(void)
+int main(int argc, char **argv)
 {
     struct _va_range got;
     termchars pc, raw;
@@ -328,6 +329,11 @@ int main(void)
     unsigned int st, flags = 1;                              /* CLI$M_NOWAIT */
     unsigned int ctrl_off = LIB$M_CLI_CTRLY | LIB$M_CLI_CTRLT;
     static const hs_sink sink = { sink_screen, sink_child, sink_event, sink_timer, 0 };
+
+    if (argc == 2 && strcmp(argv[1], "-v") == 0) {      /* MAKE_KIT checks this */
+        printf("histsh %s\n", HS_VERSION);
+        return SS$_NORMAL;
+    }
 
     /* The user's terminal. */
     dsc(&d_tt, "SYS$COMMAND", 11);

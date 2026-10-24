@@ -7,7 +7,8 @@ $! SYS$MANAGER:SYSTARTUP_VMS.COM:
 $!
 $!     $ @SYS$STARTUP:HISTSH$STARTUP.COM
 $!
-$! P1 = "REMOVE": deassign the logical names instead.
+$! P1 = "INSTALL": also print the post-installation tasks (PCSI runs it so).
+$! P1 = "REMOVE":  deassign the logical names instead (PCSI runs it so at removal).
 $!
 $! Then, as the LAST line of SYS$MANAGER:SYLOGIN.COM:
 $!     $ IF F$SEARCH("HISTSH:HISTSH_START.COM") .NES. "" THEN @HISTSH:HISTSH_START
@@ -45,4 +46,22 @@ $ then
 $   write sys$error "HISTSH$STARTUP: HISTSH.EXE not found under ''dev'''root'"
 $   exit 44
 $ endif
+$ if mode .nes. "INSTALL" then exit 1
+$ say = "write sys$output"
+$ say ""
+$ say "    Post-installation tasks for HISTSH"
+$ say ""
+$ say "    At system startup: to define HISTSH$ROOT and HISTSH at every boot, add to"
+$ say "    SYS$MANAGER:SYSTARTUP_VMS.COM:"
+$ say "    $ @SYS$STARTUP:HISTSH$STARTUP.COM"
+$ say "    At login: add as the LAST line of SYS$MANAGER:SYLOGIN.COM:"
+$ say "    $ IF F$SEARCH(""HISTSH:HISTSH_START.COM"") .NES. """" THEN @HISTSH:HISTSH_START"
+$ say "    For each user who wants it, with AUTHORIZE:"
+$ say "    UAF> ADD/IDENTIFIER HISTSH$USER              ! once"
+$ say "    UAF> GRANT/IDENTIFIER HISTSH$USER username"
+$ say "    It takes effect at the user's next login."
+$ say ""
+$ say "    PRODUCT REMOVE HISTSH removes the product and deassigns the logical names."
+$ say "    Users' history files (SYS$LOGIN:HISTSH_HISTORY.LIS) are kept."
+$ say ""
 $ exit 1

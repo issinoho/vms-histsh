@@ -1,0 +1,66 @@
+HISTSH @VERSION@ for OpenVMS (vms-histsh, @ARCH@) - EARLY TEST RELEASE
+=====================================================================
+
+HISTSH gives DCL a command history that lasts across sessions, the way bash
+keeps ~/.bash_history: log in, press up-arrow, and your commands from earlier
+sessions are there. Everything else is plain DCL, unchanged.
+
+How it works
+------------
+DCL's RECALL /OUTPUT and /INPUT save and load the up-arrow buffer, but only when
+typed at the $ prompt; inside a command procedure they do nothing. So HISTSH
+runs your DCL session on a pseudo-terminal and passes every keystroke through
+(DCL's line editing, up-arrow, Ctrl/Y and Ctrl/T behave as always). At the
+first prompt it quietly loads your history, and after each command it quietly
+saves it, with RECALL commands you never see. History is saved after every
+command, so a dropped connection loses nothing, and commands typed while your
+LOGIN.COM is still running are kept.
+
+History lives in SYS$LOGIN:HISTSH_HISTORY.LIS (owner access only), or in the
+file the logical name HISTSH$HISTORY names.
+
+Setting it up
+-------------
+1. At boot, add to SYS$MANAGER:SYSTARTUP_VMS.COM:
+       $ @SYS$STARTUP:HISTSH$STARTUP.COM
+   (PRODUCT INSTALL has already run it once, so HISTSH$ROOT and HISTSH exist.)
+
+2. Add as the LAST line of SYS$MANAGER:SYLOGIN.COM, so the session HISTSH runs
+   inherits everything SYLOGIN sets up (symbols, logical names, keys, prompt):
+       $ IF F$SEARCH("HISTSH:HISTSH_START.COM") .NES. "" THEN @HISTSH:HISTSH_START
+   It returns at once for batch, network and detached processes, for logins
+   not on a terminal, and for users without the identifier below.
+
+3. Switch users on with AUTHORIZE:
+       UAF> ADD/IDENTIFIER HISTSH$USER              ! once
+       UAF> GRANT/IDENTIFIER HISTSH$USER username
+   It takes effect at the user's next login. REVOKE/IDENTIFIER switches a user
+   off again. (The logical HISTSH$IDENTIFIER names a different identifier.)
+
+To try it without any of this: with HISTSH defined, a user can type
+       $ HISTSH_PROMPT = F$ENVIRONMENT("PROMPT")
+       $ RUN HISTSH:HISTSH
+and LOGOUT from that session returns to the first.
+
+Limits of this release
+----------------------
+- DCL's recall buffer holds 254 commands.
+- With several sessions open at once, each saves its own buffer: the last to
+  save wins.
+- Typing SET PROMPT removes HISTSH's prompt marker, and saving stops for that
+  session.
+- The user's LOGIN.COM is taken to be SYS$LOGIN:LOGIN.COM (UAF /LGICMD is
+  not read).
+- Each session uses two processes: the user's DCL is a subprocess, so it counts
+  against PRCLM and shares the job's quotas, and logging out shows two
+  "logged out" lines.
+- As with bash, anything typed on a command line (a password given as a
+  parameter, for example) is recorded. Passwords typed at a prompt are not.
+
+Removing
+--------
+Take the SYLOGIN line out, then PRODUCT REMOVE HISTSH. It deassigns HISTSH$ROOT
+and HISTSH. The identifier and users' history files are kept.
+
+Source, issues and the rest of the family: github.com/issinoho/vms-histsh and
+openvms.issinoho.com. MIT licence (LICENSE. in the installation directory).

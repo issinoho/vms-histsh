@@ -1,0 +1,27 @@
+--
+-- PCSI product description for HISTSH (vms-histsh) on OpenVMS.
+-- Template: tools/kit.sh substitutes @PRODUCER@, @BASE@ and @PCSIVERSION@.
+--
+product @PRODUCER@ @BASE@ HISTSH @PCSIVERSION@ full ;
+
+    -- HISTSH.EXE needs only the C RTL and system services: no other product.
+
+    information RELEASE_NOTES phase after ;
+
+    directory [HISTSH] ;
+
+    file [HISTSH]HISTSH.EXE ;
+    file [HISTSH]HISTSH_START.COM ;
+    file [HISTSH]HISTSH_CHILD.COM ;
+    file [HISTSH]README.VMS ;
+    file [HISTSH]LICENSE. ;
+    file [SYS$STARTUP]HISTSH$STARTUP.COM ;
+
+    -- Define HISTSH$ROOT and HISTSH now. HISTSH installs no privileged images and
+    -- changes no login procedure or UAF entry: those are post-installation tasks.
+    execute postinstall "@PCSI$DESTINATION:[SYS$STARTUP]HISTSH$STARTUP.COM INSTALL" interactive ;
+    execute install "CONTINUE" remove "@PCSI$DESTINATION:[SYS$STARTUP]HISTSH$STARTUP.COM REMOVE" ;
+
+    information POST_INSTALL phase after ;
+
+end product ;
