@@ -4,4 +4,7 @@
 2 command | SHOW TIME\r
 2 a SYLOGIN symbol made it in | SHOW SYMBOL GSED\r
 2 recall all | RECALL/ALL\r
+2 up-arrow (expect SHOW SYMBOL GSED) | \e[A
+1.5 clear | \x05\x15
+2 Ctrl/R tim then Return (expect SHOW TIME runs) | \x12tim\r
 4 logout (ends the whole session) | LOGOUT\r
