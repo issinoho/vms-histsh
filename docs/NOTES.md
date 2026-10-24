@@ -91,3 +91,12 @@ temporary file was left behind. Every fresh top-level prompt seen so far follows
 feed: `<LF><CR><NUL>` + marker, or `<LF><NUL>` + marker (first prompt, after
 Ctrl/Y "Interrupt"). Redraws have `<NUL><NUL><NUL>` or `<ESC>[K<CR><NUL>` before the
 marker. hs_relay now requires the line feed (unit test `burst_redraw_while_running`).
+
+## N11. A spawned DCL doesn't inherit the parent's prompt (2026-10-24, user report)
+
+Trying HISTSH, the user saw the prompt fall back to `$ `: both nodes set it in SYLOGIN
+(`X86VMS::`, `Myi64::`), and the child was spawned with marker + `$ `. HISTSH_START.COM
+now sets the local symbol `HISTSH_PROMPT = F$ENVIRONMENT("PROMPT")`, and HISTSH reads it
+with LIB$GET_SYMBOL (an exact string, so no quoting) and spawns with marker + that.
+Verified on x86 and IA64 with tests/vms/c1_prompt.txt (`TESTNODE::`, and
+`_TESTNODE::` on a continuation line).

@@ -85,6 +85,18 @@ static int trn_lnm(const char *name, char *out, unsigned short size)
     return 1;
 }
 
+/* The parent's prompt, from the HISTSH_PROMPT symbol HISTSH_START.COM sets
+   (F$ENVIRONMENT("PROMPT")): a spawned DCL would otherwise start with "$ ". */
+static void get_prompt(char *out, unsigned short size)
+{
+    struct dsc$descriptor_s n, o;
+    unsigned short len = 0;
+    dsc(&n, "HISTSH_PROMPT", 13);
+    dsc(&o, out, (unsigned short) (size - 1));
+    if (!(lib$get_symbol(&n, &o, &len, 0) & 1) || len == 0) { strcpy(out, "$ "); return; }
+    out[len] = '\0';
+}
+
 static void tt_write(const char *p, unsigned int n)
 {
     IOSB iosb;
@@ -233,7 +245,7 @@ int main(void)
     struct _va_range got;
     termchars pc, raw;
     struct dsc$descriptor_s d_tt, d_dev, d_prompt;
-    char devnam[64], prompt[64], pidhex[16], load_cmd[64];
+    char devnam[64], prompt[300], user_prompt[256], pidhex[16], load_cmd[64];
     unsigned short devlen = 0;
     struct { unsigned short len, code; void *buf; unsigned short *ret; unsigned int end; } dvi;
     IOSB iosb;
@@ -297,7 +309,8 @@ int main(void)
 
     pty_post_read();
     dsc(&d_dev, devnam, devlen);
-    sprintf(prompt, "%s$ ", HS_MARKER);
+    get_prompt(user_prompt, sizeof user_prompt);
+    sprintf(prompt, "%s%s", HS_MARKER, user_prompt);
     dsc(&d_prompt, prompt, (unsigned short) strlen(prompt));
     st = lib$spawn(0, &d_dev, &d_dev, &flags, 0, &child_pid, &child_status, 0,
                    done_ast, 0, &d_prompt, 0, 0);

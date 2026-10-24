@@ -31,6 +31,7 @@ $ held = $severity .eq. 1
 $ if f$search(tmp) .nes. "" then delete/nolog 'tmp';*
 $ if .not. held then goto done
 $!
+$ histsh_prompt = f$environment("PROMPT")     ! HISTSH gives the child this prompt
 $ histsh_image := $HISTSH:HISTSH.EXE
 $ histsh_image
 $ status = $status

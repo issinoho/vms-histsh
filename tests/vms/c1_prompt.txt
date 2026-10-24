@@ -1,0 +1,10 @@
+# The user's prompt (set in SYLOGIN on the real nodes) carries into the HISTSH session.
+1 a site prompt | SET PROMPT="TESTNODE::"\r
+1 as HISTSH_START does | HISTSH_PROMPT = F$ENVIRONMENT("PROMPT")\r
+6 start HISTSH | RUN HISTSH:HISTSH\r
+2 command (expect TESTNODE:: prompts) | SHOW TIME\r
+2 continued line (expect _TESTNODE::) | WRITE SYS$OUTPUT -\r
+2 part 2 | "ok"\r
+3 log out of the inner session | LOGOUT\r
+2 saved | TYPE C1_HISTORY.LIS\r
+2 outer logout | LOGOUT\r
