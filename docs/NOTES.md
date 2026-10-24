@@ -69,3 +69,15 @@ the user or a front end on a pseudo-terminal, can load or save it.
 
 `LO*GOUT :== ...` is substituted for `LOGOUT`, `LOGOUT/BRIEF` and `LO`, and
 `DELETE/SYMBOL/GLOBAL LOGOUT` removes the abbreviated symbol.
+
+## N9. A prompt can carry an escape-sequence marker (2026-10-24, x86)
+
+`tests/vms/diag_prompt.txt`: `SET PROMPT="<ESC>[?7777h$ "` is accepted, and so are
+prompts of at least 42 characters (F$ENVIRONMENT("PROMPT") reported 42). The marker
+arrives in DCL's output as:
+- top-level prompt: `<CR><NUL><ESC>[?7777h$ ` (a NUL straight before the marker);
+- continuation prompt (after `-`): `<CR>_<ESC>[?7777h$ ` (an underscore before it);
+- parameter prompt (`COPY` → `_From: `): no marker.
+So the byte before the marker tells a top-level prompt from a continuation.
+DCL redraws the prompt (marker included) on up-arrow, Ctrl/U and Ctrl/R, so a
+marker seen while the user is already at the prompt is a redraw, not a new prompt.

@@ -39,7 +39,9 @@ Probes, each about 20 lines, run under my own account:
    If not, use a marker in the child's `SET PROMPT` (a harmless SGR sequence) and check
    that it survives `SET PROMPT` changes made by the user's own LOGIN.COM.
 
-## Phase A: native recall, persisted (DCL only)
+## Phase A: native recall, persisted (DCL only): DROPPED (D4, NOTES N7)
+
+RECALL has no effect inside a command procedure, so this can't work. Kept for the record:
 
 - `HISTSH_LOGIN.COM` (called from a new SYLOGIN `sy_n` entry, interactive only): if the
   user holds the identifier, run `RECALL/ERASE/INPUT=SYS$LOGIN:HISTSH_HISTORY.LIS`
@@ -51,7 +53,14 @@ Probes, each about 20 lines, run under my own account:
   commands; with concurrent sessions the last to log out wins; no Ctrl/R search.
 - Deliver as a 0.1.0 kit (DCL only), installed and tested on x86 first, then IA64.
 
-## Phase C: HISTSH front end (C)
+## Phase C: HISTSH front end (C), in two steps (D4)
+
+**C1**: passthrough. HISTSH relays bytes both ways and uses the prompt marker only to type a
+hidden `RECALL/ERASE/INPUT` at the first prompt and a hidden `RECALL/OUTPUT` after each
+command (skipping continuation prompts), swallowing their echo. **C2**: the line editor
+described below replaces DCL's recall.
+
+C2 detail:
 
 The `HISTSH.EXE` loop:
 1. Load the history file (shared read). Create a pseudo-terminal and copy the real

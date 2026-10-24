@@ -29,3 +29,15 @@ and checked at login as in NOTES N3. This leaves each user's `/LGICMD` and LOGIN
 alone, can be revoked with one command, and lets SYLOGIN decide in one place.
 Rejected: `/LGICMD`, which replaces the user's own login procedure. To be confirmed
 with the user before the identifier is created.
+
+## D4. Phase A dropped; C is built in two steps (2026-10-24, user's choice)
+
+NOTES N7: RECALL /INPUT and /OUTPUT have no effect inside a command procedure, so
+neither SYLOGIN nor a LOGOUT wrapper can load or save the recall buffer. Considered:
+- **C1 then C2** (chosen). C1: HISTSH passes keystrokes through and leaves DCL's own
+  line editing and recall alone. At the first prompt it types a hidden
+  `RECALL/ERASE/INPUT`, and after every command a hidden `RECALL/OUTPUT`, swallowing
+  their echo. History survives dropped connections; the limit stays 254. C2: HISTSH's
+  own line editor, with unlimited history, Ctrl/R and one shared append file.
+- Straight to C2: nothing usable until the editor is done.
+- Manual symbols or keys (HSAVE/HLOAD, DEFINE/KEY): works today, not automatic.
