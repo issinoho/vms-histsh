@@ -14,13 +14,23 @@ can do it ([docs/NOTES.md](docs/NOTES.md) N7).
 ## How it works
 
 HISTSH runs your DCL session on a pseudo-terminal and passes every keystroke through,
-so DCL's own line editing, up-arrow, Ctrl/Y and Ctrl/T behave as always. It finds DCL's
-prompt by an invisible marker at both ends of it. At the first prompt it quietly types
-`RECALL/ERASE/INPUT` to load your history, and after each command it quietly types
-`RECALL/OUTPUT` to save it. You never see either command. So history is saved after
-every command, and a dropped connection loses nothing. Commands typed while your
-LOGIN.COM is still running are kept too. The details are in [docs/C1.md](docs/C1.md),
-and the decisions in [docs/DECISIONS.md](docs/DECISIONS.md).
+so DCL's own line editing, Ctrl/Y and Ctrl/T behave as always. It finds DCL's prompt by
+an invisible marker at both ends of it. After each command it quietly types
+`RECALL/OUTPUT` at the prompt, sees what DCL ran, and appends it at once to one history
+file shared by all your sessions. You never see the hidden command, and a dropped
+connection loses nothing.
+
+At the `$` prompt, HISTSH answers the history keys from that file:
+
+| Key | Does |
+| --- | --- |
+| up-arrow, Ctrl/B | the previous command (from every session, not just this one); edit it with DCL's keys |
+| down-arrow | the next one; past the newest, an empty line |
+| Ctrl/R | search, as in bash: type to narrow, Ctrl/R for older, Return runs it, Escape or an arrow edits it, Ctrl/G cancels |
+
+Everywhere else (a continuation line, a program such as EDT, typing ahead) keys go to
+DCL or the program untouched. The details are in [docs/C1.md](docs/C1.md) and
+[docs/C2.md](docs/C2.md), and the decisions in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 A user is switched on with a rights identifier:
 
@@ -34,29 +44,21 @@ and HISTSH hands every command to DCL.)
 
 ## Status
 
-**0.1.0 (C1), an early test release, working on OpenVMS x86-64 (E9.2-4) and IA64 (V8.4-2L3)**, tested on both nodes with
-real SSH logins and the on-node tests in [tests/vms](tests/vms), installed from its
-PCSI kits. Limits of C1:
+**0.2.0, an early test release, working on OpenVMS x86-64 (E9.2-4) and IA64
+(V8.4-2L3)**, tested on both nodes with the on-node tests in [tests/vms](tests/vms) and
+installed from its PCSI kits. 0.1.0 used DCL's own recall buffer (a few kilobytes, about
+190 short commands, [docs/NOTES.md](docs/NOTES.md) N13), and the last session to log out
+won. 0.2.0 keeps one shared file, with no limit but `HISTSH$SIZE` (default 2000).
+Limits:
 
-- DCL's recall buffer holds a few kilobytes: about 190 short commands, fewer long ones
-  ([docs/NOTES.md](docs/NOTES.md) N13).
-- With several sessions open at once, each saves its own buffer, and the last to save
-  wins.
-- Typing `SET PROMPT` removes the marker, and saving stops for that session.
+- A `SET PROMPT` typed at the prompt is handled (HISTSH puts its marker back); a prompt
+  changed inside a command procedure isn't, and saving stops for that session.
 - LOGIN.COM is taken to be `SYS$LOGIN:LOGIN.COM` (a UAF `/LGICMD` isn't read).
 - Each session uses two processes: the spawned DCL counts against PRCLM, and you see
   two "logged out" lines.
-
-**On `main` since 0.1.0: C2** ([docs/C2.md](docs/C2.md)), done and tested on both nodes,
-to be released as 0.2.0. Up-arrow uses HISTSH's own history instead of DCL's buffer:
-
-- one history file shared by all your sessions, appended to after every command, with no
-  limit but `HISTSH$SIZE` (default 2000);
-- up-arrow, down-arrow and Ctrl/B walk through it at the prompt, and DCL still edits the
-  line;
-- Ctrl/R searches it, as in bash: Return runs the match, Escape or an arrow key puts it
-  on the line, Ctrl/G cancels;
-- `SET PROMPT` typed at the prompt no longer stops saving: HISTSH puts its marker back.
+- At the prompt Ctrl/R is HISTSH's search, not DCL's "redisplay line".
+- As with bash, anything typed on a command line is recorded, a password given as a
+  parameter included. Passwords typed at a prompt are not.
 
 ## Installing
 

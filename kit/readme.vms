@@ -7,17 +7,30 @@ sessions are there. Everything else is plain DCL, unchanged.
 
 How it works
 ------------
-DCL's RECALL /OUTPUT and /INPUT save and load the up-arrow buffer, but only when
-typed at the $ prompt; inside a command procedure they do nothing. So HISTSH
-runs your DCL session on a pseudo-terminal and passes every keystroke through
-(DCL's line editing, up-arrow, Ctrl/Y and Ctrl/T behave as always). At the
-first prompt it quietly loads your history, and after each command it quietly
-saves it, with RECALL commands you never see. History is saved after every
-command, so a dropped connection loses nothing, and commands typed while your
-LOGIN.COM is still running are kept.
+DCL's RECALL /OUTPUT and /INPUT only work when typed at the $ prompt; inside
+a command procedure they do nothing. So HISTSH runs your DCL session on a
+pseudo-terminal and passes every keystroke through: DCL's line editing,
+Ctrl/Y and Ctrl/T behave as always. After each command it quietly asks DCL
+what was run (with RECALL commands you never see) and appends it at once to
+your history file, which all your sessions share.
+
+At the $ prompt:
+  up-arrow, Ctrl/B   the previous command from your history (all sessions,
+                     not just this one); edit it with DCL's usual keys
+  down-arrow         the next one; past the newest, an empty line
+  Ctrl/R             search the history, as in bash: type to narrow it,
+                     Ctrl/R again for an older match, Delete to shorten,
+                     Return to run the match, Escape or an arrow key to put
+                     it on the line, Ctrl/G to cancel
+
+Elsewhere (a continuation line, a program such as EDT, typing ahead) keys go
+to DCL or the program as usual.
 
 History lives in SYS$LOGIN:HISTSH_HISTORY.LIS (owner access only), or in the
-file the logical name HISTSH$HISTORY names.
+file the logical name HISTSH$HISTORY names. It keeps the newest HISTSH$SIZE
+commands (default 2000) for up-arrow; the file is cut back when it grows past
+twice that. Other sessions' commands show up in a session at its next login.
+Commands typed while your LOGIN.COM is still running are kept.
 
 Setting it up
 -------------
@@ -44,11 +57,9 @@ and LOGOUT from that session returns to the first.
 
 Limits of this release
 ----------------------
-- DCL's recall buffer holds 254 commands.
-- With several sessions open at once, each saves its own buffer: the last to
-  save wins.
-- Typing SET PROMPT removes HISTSH's prompt marker, and saving stops for that
-  session.
+- A SET PROMPT typed at the $ prompt is handled (HISTSH puts back the marker
+  it finds DCL's prompt by); a prompt changed inside a command procedure is
+  not, and saving stops for that session.
 - The user's LOGIN.COM is taken to be SYS$LOGIN:LOGIN.COM (UAF /LGICMD is
   not read).
 - Each session uses two processes: the user's DCL is a subprocess, so it counts
@@ -56,6 +67,7 @@ Limits of this release
   "logged out" lines.
 - As with bash, anything typed on a command line (a password given as a
   parameter, for example) is recorded. Passwords typed at a prompt are not.
+- At the $ prompt Ctrl/R is HISTSH's search, not DCL's "redisplay line".
 
 Removing
 --------

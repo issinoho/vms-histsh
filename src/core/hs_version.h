@@ -7,7 +7,7 @@
 #ifndef HS_VERSION_H
 #define HS_VERSION_H
 
-#define HS_VERSION      "0.1.0"
-#define HS_PCSI_VERSION "T0.1-0"
+#define HS_VERSION      "0.2.0"
+#define HS_PCSI_VERSION "T0.2-0"
 
 #endif
