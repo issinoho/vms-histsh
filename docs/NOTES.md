@@ -49,3 +49,23 @@ CHAR_CHANGED (5) and RESUME_OUTPUT (4) do fire (at startup, on `SET TERMINAL/WID
 at logout). BELL (1) doesn't; BEL arrives as data. So Phase C detects DCL's prompt with
 a marker in the child's prompt, which HISTSH strips before output reaches the real
 terminal, and uses CHAR_CHANGED to copy characteristic changes back to it.
+
+## N7. RECALL works only at the prompt, never inside a procedure (2026-10-24, x86)
+
+In an interactive DCL (`tests/vms/diag_a.txt`, `diag_b.txt` via PTYDRIVE):
+- `@T_RECALL` running `RECALL/OUTPUT=f`: status %X00030001, **no file**. The same
+  command typed at the `$` prompt writes it.
+- `@T_LOAD` running `RECALL/ERASE/INPUT=seed`: status %X00030001, **buffer
+  unchanged** (RECALL/ALL shows only the session's own commands; the seeded lines
+  aren't there, and neither /ERASE nor /INPUT took effect).
+- An image run at the prompt calling `LIB$DO_COMMAND("RECALL/OUTPUT=f")` **does**
+  write the file: the command runs at prompt level after the image exits. But DCL then
+  returns to the prompt, so nothing can follow it (no chaining into LOGOUT).
+So neither SYLOGIN (load) nor a LOGOUT wrapper procedure (save) can reach the recall
+buffer. Phase A as planned (D2) is not possible. Only something typing at the prompt,
+the user or a front end on a pseudo-terminal, can load or save it.
+
+## N8. A global symbol does replace the LOGOUT verb, with qualifiers (2026-10-24, x86)
+
+`LO*GOUT :== ...` is substituted for `LOGOUT`, `LOGOUT/BRIEF` and `LO`, and
+`DELETE/SYMBOL/GLOBAL LOGOUT` removes the abbreviated symbol.

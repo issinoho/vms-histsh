@@ -1,0 +1,9 @@
+1 command | WRITE SYS$OUTPUT "gamma"\r
+1.5 RECALL/INPUT inside a procedure | @T_LOAD\r
+1 what is in the buffer now | RECALL/ALL\r
+1 up-arrow x2 (expect SHOW DEFAULT ! seeded two if loaded) | \e[A\e[A\x15\r
+2 image runs LIB$DO_COMMAND | RUN T_DOCMD\r
+1 check | WRITE SYS$OUTPUT "file: ", F$SEARCH("T_DOCMD.LIS")\r
+1 show it | TYPE T_DOCMD.LIS\r
+1 clean | DELETE T_DOCMD.LIS;*\r
+2 logout | LOGOUT\r

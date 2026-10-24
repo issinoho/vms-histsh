@@ -1,0 +1,7 @@
+# Session 1: load (no file yet), run commands, LOGOUT/BRIEF saves.
+1.5 login procedure | @HISTSH:HISTSH_LOGIN\r
+1.5 LOGOUT symbol defined | SHOW SYMBOL LOGOUT\r
+1 command alpha | WRITE SYS$OUTPUT "alpha"\r
+1 command with quotes | WRITE SYS$OUTPUT "it's ""quoted"""\r
+1 command show default | SHOW DEFAULT\r
+3 logout with qualifier | LOGOUT/BRIEF\r

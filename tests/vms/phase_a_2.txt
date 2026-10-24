@@ -1,0 +1,5 @@
+# Session 2: history from session 1 is back; up-arrow reaches it; LO abbreviation saves.
+1.5 login procedure | @HISTSH:HISTSH_LOGIN\r
+1.5 recall all | RECALL/ALL\r
+1.5 up-arrow x3 (expect SHOW DEFAULT from session 1) | \e[A\e[A\e[A\r
+3 logout by abbreviation | LO\r

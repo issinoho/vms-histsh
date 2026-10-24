@@ -1,0 +1,6 @@
+# Session 3: a user without the identifier is left alone.
+1 not switched on | DEFINE HISTSH$IDENTIFIER NO_SUCH_ID\r
+1.5 login procedure | @HISTSH:HISTSH_LOGIN\r
+1 no LOGOUT symbol | SHOW SYMBOL LOGOUT\r
+1 recall all (expect only this session) | RECALL/ALL\r
+3 plain logout | LOGOUT\r
