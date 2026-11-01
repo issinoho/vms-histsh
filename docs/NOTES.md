@@ -213,7 +213,9 @@ it all. It also shows the *outer* terminal overflowing (156 bytes, no ALTYPEAHD)
 those bytes were kept, by 0.2.0 too.
 
 **Retested by the user (2026-11-01, IA64):** the same certificate pasted into CREATE
-through this build in their own SSH session, with no error.
+through this build in their own SSH session, with no error. Released in 0.2.1: the
+kits were installed over 0.2.0 on both nodes (`tests/vms/pcsi_upgrade.com`, run by the
+user) and the login rehearsal through the live SYLOGIN passed on both.
 
 `HISTSH$TRACE` (a file name) logs every read and write with its status and byte
 count, never the bytes themselves, for the next time this can't be reproduced.
