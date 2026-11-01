@@ -212,6 +212,9 @@ shows the child held at 300 while the paste waited in HISTSH's queue, CREATE get
 it all. It also shows the *outer* terminal overflowing (156 bytes, no ALTYPEAHD):
 those bytes were kept, by 0.2.0 too.
 
+**Retested by the user (2026-11-01, IA64):** the same certificate pasted into CREATE
+through this build in their own SSH session, with no error.
+
 `HISTSH$TRACE` (a file name) logs every read and write with its status and byte
 count, never the bytes themselves, for the next time this can't be reproduced.
 
