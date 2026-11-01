@@ -1,0 +1,16 @@
+# A 1.4 KB paste into CREATE inside HISTSH (the IA64 paste bug, 2026-11-01).
+# Lines start with ! so that anything DCL gets by mistake is a comment.
+6 start HISTSH | RUN HISTSH:HISTSH\r
+2 CREATE (typed first, as the user did) | CREATE DIAG_PASTE_OUT.TXT\r
+0.01 paste part 1 | !BEGIN\r!pTyGJMuHbEL31IeL2HPcHyGcFRl1SPnXNYvMIHa/2o76umfXfKm/r5kJP1VrT+1\r!FJors/6ILi8IHn5kxsC7tVO/HbkQfyy/KV5zjR3j1twdTKWTddB+XhkAS1voQG6\r
+0.01 paste part 2 | !yyzyN9zHYIa4UOrGNATMuDJawTgsu8PO+799nKSNrh9UCauSDmLhuVtcqcYezdZ\r!/tDDj8hYs5suKcNd8Zra9A9sKPxZ9W3qLy7zKUVQDT7S8sTQCBNR3YbDgbleph1\r!QHt61QTC4XATWS8PHp9NHfYjFM5DI4pZj59fhZ5R1Py4oJe2JbmPTuSgR7cMy+U\r
+0.01 paste part 3 | !cU3zr1ZtoLuCr64CxqlIOdNKhiFXiQ2hzT/pLjHX2JiCLhKcIhP6Br1iQFeOUhG\r!XZnnal5WisCgEBCY8f5N3/ynbdrZRzsGQBJg3UHKwkflF6XUi5AhuqpfEnbtXAq\r!wK8jZfALhLSzFyCmmdKTxp/TkSF2RCdKDFRuNw5GCf+hA6ILI8gJhead6/wJ9kF\r
+0.01 paste part 4 | !ZJSqgmRB9H+iMb+lk777PZnK8Cl6J5ixaaJLShuQjOud/+yDUA+5zmS1swoPqAp\r!ryPZBlgvIyxJu2jGjNGkTfi3oYv2DzaKG05Rk+GQV81rkmghzem9yPVUJa/c5q5\r!2RYfLWrLoevhZC0x0awirH/juQbLifxz53nCQE28+AJy75fNcTTN6KFAQdEmQg3\r
+0.01 paste part 5 | !OMJmYxhcABm6jof8efD0nHCY/1Kgd2vd/Er1uyZAlIa/ZnYd7chlN/Xc+1HSyGb\r!DS1GHXy5oOKVqYX7Enwvq4VNAKjKs1Pawtn3LG8Zv5Ypu8D0fzFwE7IHgYIruiq\r!FhojmAIDdN87xg3/Q/XBmTepo6uKZyUf0IE9pU2NJhKaM1/5WdR16ePlljivghZ\r
+0.01 paste part 6 | !4fXfeTkYpIygfdM7ENA8d5vFldPGYYJvW5hANsbEvrSFagEaBp0vXnJaE/9I0My\r!TLUyi0kn1Gnt11CuZyzaA3U2OLzu6UQBGSyLvVSskUVINx+ZmQF9oGxLUczZ8Xb\r!FzUxtPTfYFEpPx6n1nf2xv54WCA+7e56W8zNIQt3uL4FFQKoKGwRDIOYQ+kVcIs\r
+0.01 paste part 7 | !gUpj6Sg9aheovEZXzUjpwVhOGu5NgyvhwvSuqK4dWGlgnoAEcTl31uGQ+dFCGAt\r!mNtc0mRau8URBfT5MISizhBHs4/fVAFHDzXeUHNBZS0Z1WnImG9Aw37K5WcNhdE\r!PqhGi3hlbKBVheZUpYxqew88AD3dnbyJVSEDONUsSDDFRFIFIuZIxNfaaOEELk9\r
+3 paste part 8 | !END\r
+2 Ctrl/Z | \x1A
+2 compare (expect 0 difference sections) | DIFFERENCES DIAG_PASTE_REF.TXT DIAG_PASTE_OUT.TXT\r
+3 log out of HISTSH | LOGOUT\r
+2 outer logout | LOGOUT\r
