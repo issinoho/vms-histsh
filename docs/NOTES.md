@@ -182,3 +182,38 @@ fresh prompt without the marker (LF NUL or LF CR NUL, then not a marker), follow
 the markers back on the new prompt, and the prompt is redrawn in place
 (`MY> <CR><ESC>[KMY> ` in `tests/vms/c2_search.txt`). Keys typed first postpone it to
 the next prompt. A prompt changed inside a command procedure isn't noticed.
+
+## N19. A paste into a program failed on IA64: write only what the typeahead has room for (2026-11-01)
+
+The user pasted a 1.3 KB certificate into `CREATE` inside HISTSH on IA64: CREATE
+failed with `%CREATE-E-READERR … -SYSTEM-W-DATAOVERUN` after six lines, and the rest
+of the paste ran as DCL commands (and was recorded as history). No byte was lost: the
+N17 resend carried on from exactly where CREATE stopped. The same paste worked with
+HISTSH off. `probes/probe_paste.c` found:
+- The child terminal's typeahead holds **337** bytes on IA64 with `TT2$M_ALTYPEAHD`
+  (`TTY_ALTYPAHD` is 400; `TTY_TYPAHDSZ` 156) and more than 3000 on x86 (6330).
+- `PTD$C_SEND_XOFF`/`XON` events do fire (unlike the read events, N6), but only once
+  the buffer is already full, with or without HOSTSYNC: too late to prevent an overrun.
+- `IO$_SENSEMODE|IO$M_TYPEAHDCNT` on a channel to the child's FTA device gives the
+  count. Writing only what fits under the capacity gave **no overruns** in every
+  variant.
+- But overruns alone didn't break CREATE in the probe, nor through the real HISTSH
+  0.2.0 under PTYDRIVE (`tests/vms/diag_paste.com`): not with the user's exact
+  terminal characteristics, not with the paste streamed in 16- to 256-byte pieces,
+  not with the CREATE command in the same paste, not with READSYNC. An overflow
+  during a WAIT didn't fail the next `READ SYS$COMMAND` either. What differs in the
+  user's session is the outer (SSH) terminal, which isn't reproduced.
+
+So HISTSH now writes to the child only as much as its typeahead has room for (three
+quarters of `TTY_ALTYPAHD`: 300 on IA64, 4746 on x86) and tries again 10 ms later;
+stops reading the real terminal while more than 4 KB waits for the child; and keeps
+the bytes of a real-terminal read that ends in DATAOVERUN. The traced PTYDRIVE run
+shows the child held at 300 while the paste waited in HISTSH's queue, CREATE getting
+it all. It also shows the *outer* terminal overflowing (156 bytes, no ALTYPEAHD):
+those bytes were kept, by 0.2.0 too.
+
+`HISTSH$TRACE` (a file name) logs every read and write with its status and byte
+count, never the bytes themselves, for the next time this can't be reproduced.
+
+Also seen: VMS file names ignore case, again (N17): the test procedure deleted
+`DIAG_PASTE.TXT`, its own script, before running it.

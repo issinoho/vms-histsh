@@ -10,6 +10,7 @@
    are serialised, so the relay (src/core/hs_relay.c) never sees two callers. */
 #define __NEW_STARLET 1
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stat.h>
@@ -30,6 +31,7 @@
 #include <efndef.h>
 #include <iosbdef.h>
 #include <va_rangedef.h>
+#include <syidef.h>
 #include "hs_relay.h"
 #include "hs_hist.h"
 #include "hs_version.h"
@@ -58,6 +60,25 @@ static char tt_buf[256];
 static IOSB tt_iosb;
 static char hist_file[256], new_file[256], load_file[256];
 static unsigned int timer_q[2];
+static unsigned short ft_chan;          /* the child's terminal: its typeahead count */
+static unsigned int ta_budget = 128;    /* most the child's typeahead may hold (N19) */
+static int tt_paused;                   /* not reading the real terminal: queue full */
+static FILE *trace_f;                   /* HISTSH$TRACE: counts and statuses, no data */
+
+/* One line of the trace, stamped with milliseconds. Never pass it key data. */
+static void trace(const char *fmt, ...)
+{
+    unsigned __int64 now;
+    va_list ap;
+    if (!trace_f) return;
+    sys$gettim((struct _generic_64 *) &now);
+    fprintf(trace_f, "%08u ", (unsigned int) ((now / 10000u) % 100000000u));
+    va_start(ap, fmt);
+    vfprintf(trace_f, fmt, ap);
+    va_end(ap);
+    fputc('\n', trace_f);
+    fflush(trace_f);
+}
 
 /* ---- small helpers ---- */
 
@@ -123,35 +144,69 @@ static void say(const char *text)            /* a HISTSH message on its own line
 
 static void sink_screen(void *ctx, const char *p, unsigned int n) { (void) ctx; tt_write(p, n); }
 
-/* Bytes for the child that its terminal hasn't taken yet. PTD$WRITE reports in
-   the buffer how many it took; when the typeahead buffer is full it says
-   DATAOVERUN (seen on IA64 with a burst of keys), and the rest is sent again
-   shortly after instead of being lost (NOTES N17). */
+/* Bytes for the child that its terminal hasn't taken yet. Writes go only as fast
+   as the child's typeahead buffer has room: overflowing it can fail the read of
+   the program that is reading (CREATE, NOTES N19), even though PTD$WRITE says how
+   many bytes it took and the rest is sent again (N17). While the queue is half
+   full the real terminal isn't read, so a long paste waits there instead. */
 static char child_q[8192];
 static unsigned int child_qn;
 static void child_retry_ast(int prm);
+static void tt_post_read(void);
+
+/* Room in the child's typeahead buffer; DATA_MAX if it can't be told. */
+static unsigned int child_room(unsigned int *held)
+{
+    IOSB iosb;
+    unsigned short buf[4];
+    *held = 0;
+    if (!ft_chan) return DATA_MAX;
+    memset(buf, 0, sizeof buf);
+    if (!(sys$qiow(EFN$C_ENF, ft_chan, IO$_SENSEMODE | IO$M_TYPEAHDCNT, &iosb, 0, 0,
+                   buf, 8, 0, 0, 0, 0) & 1) || !(iosb.iosb$w_status & 1))
+        return DATA_MAX;
+    *held = buf[0];
+    return buf[0] >= ta_budget ? 0 : ta_budget - buf[0];
+}
 
 static void child_flush(void)
 {
     static unsigned int retry_q[2];
+    static int was_full;                     /* traced once per wait, not per retry */
     while (child_qn) {
-        unsigned int k = child_qn > DATA_MAX ? DATA_MAX : child_qn, took;
+        unsigned int k = child_qn > DATA_MAX ? DATA_MAX : child_qn, took, held;
+        unsigned int room = child_room(&held);
         unsigned short *h;
-        char *slot = region + WBUF_OFF + WSLOT * wslot;
-        wslot = (wslot + 1) % NWSLOTS;
-        h = (unsigned short *) slot;
-        memcpy(slot + 4, child_q, k);
-        h[0] = 0; h[1] = 0;
-        ptd$write(pty_chan, 0, 0, slot, k, 0, 0);
-        took = (h[0] & 1) || h[0] == SS$_DATAOVERUN ? h[1] : 0;
-        if (took > k) took = k;
-        memmove(child_q, child_q + took, child_qn - took);
-        child_qn -= took;
-        if (took < k) {                      /* full: try the rest again in 20 ms */
-            retry_q[0] = (unsigned int) -200000; retry_q[1] = 0xFFFFFFFFu;
+        char *slot;
+        if (k > room) k = room;
+        if (k) {
+            slot = region + WBUF_OFF + WSLOT * wslot;
+            wslot = (wslot + 1) % NWSLOTS;
+            h = (unsigned short *) slot;
+            memcpy(slot + 4, child_q, k);
+            h[0] = 0; h[1] = 0;
+            ptd$write(pty_chan, 0, 0, slot, k, 0, 0);
+            took = (h[0] & 1) || h[0] == SS$_DATAOVERUN ? h[1] : 0;
+            if (took > k) took = k;
+            trace("child write %u took %u status %%X%04X typeahead %u queued %u",
+                  k, took, h[0], held, child_qn);
+            memmove(child_q, child_q + took, child_qn - took);
+            child_qn -= took;
+        } else {
+            took = 0;
+            if (!was_full) trace("child full: typeahead %u, queued %u", held, child_qn);
+        }
+        was_full = k == 0;
+        if (took < k || k == 0) {            /* no room: try again in 10 ms */
+            retry_q[0] = (unsigned int) -100000; retry_q[1] = 0xFFFFFFFFu;
             sys$setimr(EFN$C_ENF, (struct _generic_64 *) retry_q, child_retry_ast, 2, 0);
             return;
         }
+    }
+    if (tt_paused && !child_done) {
+        tt_paused = 0;
+        trace("terminal read resumed");
+        tt_post_read();
     }
 }
 
@@ -161,7 +216,10 @@ static void sink_child(void *ctx, const char *p, unsigned int n)
 {
     int waiting = child_qn != 0;             /* a retry is already due */
     (void) ctx;
-    if (n > sizeof child_q - child_qn) n = sizeof child_q - child_qn;
+    if (n > sizeof child_q - child_qn) {
+        trace("child queue full: %u bytes lost", n - (sizeof child_q - child_qn));
+        n = sizeof child_q - child_qn;
+    }
     memcpy(child_q + child_qn, p, n);
     child_qn += n;
     if (!waiting) child_flush();
@@ -336,7 +394,10 @@ static void pty_read_ast(int prm)
     unsigned short *h = (unsigned short *) (region + RBUF_OFF);
     (void) prm;
     if (h[0] & 1) hs_relay_child_output(&relay, region + RBUF_OFF + 4, h[1]);
-    else if (h[0] == SS$_ABORT || h[0] == SS$_CANCEL || h[0] == SS$_HANGUP) return;
+    else {
+        trace("child read status %%X%04X", h[0]);
+        if (h[0] == SS$_ABORT || h[0] == SS$_CANCEL || h[0] == SS$_HANGUP) return;
+    }
     if (!child_done) pty_post_read();
 }
 
@@ -356,18 +417,34 @@ static void tt_read_ast(int prm)
     unsigned int n;
     (void) prm;
     if (child_done) return;
+    /* A failed read (DATAOVERUN: the real terminal's typeahead overflowed) can
+       still hold bytes: keep them. */
     if (!(tt_iosb.iosb$w_status & 1)) {
+        trace("terminal read status %%X%04X, %u bytes", tt_iosb.iosb$w_status,
+              tt_iosb.iosb$w_bcnt);
         if (tt_iosb.iosb$w_status == SS$_ABORT || tt_iosb.iosb$w_status == SS$_CANCEL) return;
-        tt_post_read();
-        return;
+        if (tt_iosb.iosb$w_status != SS$_DATAOVERUN || tt_iosb.iosb$w_bcnt == 0) {
+            tt_post_read();
+            return;
+        }
     }
     n = tt_iosb.iosb$w_bcnt;
     /* Take whatever else is already typed ahead in one go (timed read, 0 s). */
     if (sys$qiow(EFN$C_ENF, tt_chan, IO$_READVBLK | IO$M_NOECHO | IO$M_NOFILTR | IO$M_TIMED,
                  &iosb, 0, 0, tt_buf + n, sizeof tt_buf - n, 0,
-                 (unsigned __int64) no_terminators, 0, 0) & 1)
+                 (unsigned __int64) no_terminators, 0, 0) & 1) {
+        if (!(iosb.iosb$w_status & 1) && iosb.iosb$w_status != SS$_TIMEOUT)
+            trace("terminal timed read status %%X%04X, %u bytes", iosb.iosb$w_status,
+                  iosb.iosb$w_bcnt);
         n += iosb.iosb$w_bcnt;
+    }
+    trace("terminal read %u bytes", n);
     hs_relay_user_input(&relay, tt_buf, n);
+    if (child_qn > sizeof child_q / 2) {       /* the child is behind: wait for it */
+        tt_paused = 1;
+        trace("terminal read paused, queued %u", child_qn);
+        return;
+    }
     tt_post_read();
 }
 
@@ -456,6 +533,25 @@ int main(int argc, char **argv)
     dvi.end = 0;
     sys$getdviw(EFN$C_ENF, pty_chan, 0, &dvi, 0, 0, 0, 0);
     devnam[devlen] = '\0';
+    dsc(&d_dev, devnam, devlen);
+    if (!(sys$assign(&d_dev, &ft_chan, 0, 0, 0) & 1)) ft_chan = 0;   /* then unpaced */
+#ifdef SYI$_TTY_ALTYPAHD
+    {
+        /* The buffer holds a little less than the parameter says (400 gave 337 on
+           IA64): leave a quarter spare. */
+        int code = SYI$_TTY_ALTYPAHD;
+        unsigned int v = 0;
+        if ((lib$getsyi(&code, &v, 0, 0, 0, 0) & 1) && v >= 64) ta_budget = v / 4 * 3;
+    }
+#endif
+    {
+        char tf[256];
+        if (trn_lnm("HISTSH$TRACE", tf, sizeof tf) && (trace_f = fopen(tf, "w")) != 0) {
+            owner_only(tf);
+            trace("histsh %s on %s: typeahead budget %u, count %s", HS_VERSION, devnam,
+                  ta_budget, ft_chan ? "on" : "off");
+        }
+    }
 
     exit_block.handler = exit_handler;
     exit_block.argc = 1;
@@ -472,7 +568,6 @@ int main(int argc, char **argv)
     if ((st & 1) && (iosb.iosb$w_status & 1)) tt_changed = 1;
 
     pty_post_read();
-    dsc(&d_dev, devnam, devlen);
     get_prompt(user_prompt, sizeof user_prompt);
     sprintf(prompt, "%s%s%s", HS_MARKER, user_prompt, HS_MARKER);   /* both ends: N12 */
     dsc(&d_prompt, prompt, (unsigned short) strlen(prompt));

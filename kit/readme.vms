@@ -69,6 +69,10 @@ Limits of this release
   parameter, for example) is recorded. Passwords typed at a prompt are not.
 - At the $ prompt Ctrl/R is HISTSH's search, not DCL's "redisplay line".
 
+If something goes wrong, DEFINE HISTSH$TRACE SYS$LOGIN:HISTSH.TRACE before
+HISTSH starts: it logs each read and write with its status and size (never
+what was typed).
+
 Removing
 --------
 Take the SYLOGIN line out, then PRODUCT REMOVE HISTSH. It deassigns HISTSH$ROOT

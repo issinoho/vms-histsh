@@ -61,3 +61,17 @@ Considered:
 Ctrl/R stops being DCL's "redisplay line" at a fresh prompt (bash users expect search
 there). HISTSH uses DCL's Ctrl/R itself, to repaint the line when a search is
 cancelled.
+
+## D6. Input to the child is paced by its typeahead count (2026-11-01, N19)
+
+Considered:
+- **Resend what wasn't taken** (N17, 0.2.0): no bytes lost, but the buffer still
+  overflows, and a program reading it can fail (CREATE on IA64).
+- **Stop on the XOFF event, go on at XON**: fires only once the buffer is full.
+- **Small writes at a fixed rate**: guesses the reader's speed; slow for a big paste on
+  x86, which has a 6 KB buffer.
+- **Ask the child's terminal how much it holds before each write (chosen)**: one
+  SENSEMODE per write, and never overflows. The resend stays for when the count can't
+  be read. While the child is behind, HISTSH stops reading the real terminal, so a
+  long paste waits in that terminal's typeahead and the sender's flow control, not in
+  a queue HISTSH would have to drop from.
