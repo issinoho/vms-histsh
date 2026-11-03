@@ -222,3 +222,19 @@ count, never the bytes themselves, for the next time this can't be reproduced.
 
 Also seen: VMS file names ignore case, again (N17): the test procedure deleted
 `DIAG_PASTE.TXT`, its own script, before running it.
+
+## N20. The child inherited HISTSH's Ctrl/Y off: "Interrupt", but nothing stopped (2026-11-03, both)
+
+The user reported that Ctrl/Y in DEVMON inside HISTSH showed "Interrupt" but DEVMON
+went on. HISTSH calls `LIB$DISABLE_CTRL(Y,T)` for itself, so that those keys reach it
+as data, and then spawns the child, which **inherits the setting**:
+`F$ENVIRONMENT("CONTROL")` was empty in the child although the session had `T,Y`.
+With Ctrl/Y off, DCL still echoes the reverse-video "Interrupt" but stops nothing:
+`tests/vms/diag_ctrly.txt` shows a `WAIT 0:0:20` going on after Ctrl/Y inside HISTSH
+and stopping outside it. DEVMON copies from before 2026-10-25 rely on the session's
+Ctrl/Y. Newer ones run `SET CONTROL=Y` themselves, which is why they stopped. Ctrl/T
+was off in the child too.
+
+Now HISTSH puts the state it found in `HISTSH$CONTROL` (`Y,T`, `Y` or `T`; not defined
+if both were off), and HISTSH_CHILD.COM does `SET CONTROL=(...)` before LOGIN.COM.
+Rerun on both nodes: the child shows `T,Y`, and Ctrl/Y stops the WAIT and DEVMON.

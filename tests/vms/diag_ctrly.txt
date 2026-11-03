@@ -1,0 +1,16 @@
+# Ctrl/Y inside HISTSH (user report 2026-11-03: DEVMON shows "Interrupt" but goes on).
+# The outer session has Ctrl/Y on, as an interactive login usually does.
+1 outer control | SET CONTROL=(Y,T)\r
+1 outer shows | WRITE SYS$OUTPUT "outer: ", F$ENVIRONMENT("CONTROL")\r
+3 plain wait outer | WAIT 0:0:20\r
+3 ctrl-y outer | \x19
+6 start HISTSH | RUN HISTSH:HISTSH\r
+1 inner shows | WRITE SYS$OUTPUT "inner: ", F$ENVIRONMENT("CONTROL")\r
+3 plain wait inner | WAIT 0:0:20\r
+3 ctrl-y inner | \x19
+20 let it end | \r
+6 devmon inner | @DEVMON 5\r
+4 ctrl-y devmon | \x19
+4 after devmon | WRITE SYS$OUTPUT "devmon back"\r
+3 logout inner | LOGOUT\r
+2 outer logout | LOGOUT\r

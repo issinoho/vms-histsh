@@ -560,7 +560,16 @@ int main(int argc, char **argv)
 
     /* The real terminal passes everything through: Ctrl/Y and Ctrl/T go to the child. */
     st = lib$disable_ctrl(&ctrl_off, &ctrl_saved);
-    if (st & 1) ctrl_changed = 1;
+    if (st & 1) {
+        /* The child is spawned after this and would inherit it: with Ctrl/Y off, a
+           Ctrl/Y shows "Interrupt" but stops nothing (NOTES N20). HISTSH_CHILD.COM
+           sets the child back to what the session had. */
+        char ctl[8] = "";
+        if (ctrl_saved & LIB$M_CLI_CTRLY) strcat(ctl, "Y");
+        if (ctrl_saved & LIB$M_CLI_CTRLT) strcat(ctl, ctl[0] ? ",T" : "T");
+        if (ctl[0]) set_lnm("HISTSH$CONTROL", ctl);
+        ctrl_changed = 1;
+    }
     raw = tt_saved;
     raw.basic |= TT$M_NOECHO;
     raw.ext |= TT2$M_PASTHRU;
