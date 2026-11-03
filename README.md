@@ -53,7 +53,7 @@ and HISTSH hands every command to DCL.)
 
 ## Status
 
-**0.2.1, an early test release, working on OpenVMS x86-64 (E9.2-4) and IA64
+**0.2.2, an early test release, working on OpenVMS x86-64 (E9.2-4) and IA64
 (V8.4-2L3)**, tested on both nodes with the on-node tests in [tests/vms](tests/vms) and
 installed from its PCSI kits. 0.1.0 used DCL's own recall buffer (a few kilobytes, about
 190 short commands, [docs/NOTES.md](docs/NOTES.md) N13), and the last session to log out
@@ -61,7 +61,8 @@ won. 0.2.0 keeps one shared file, with no limit but `HISTSH$SIZE` (default 2000)
 fixes a long paste into a program on IA64 (`CREATE` failed with `DATAOVERUN` and the rest
 ran as commands, N19): HISTSH now sends keys only as fast as the session's typeahead
 buffer has room. `HISTSH$TRACE` logs HISTSH's terminal I/O (sizes and statuses, never
-the keys) for diagnosis.
+the keys) for diagnosis. 0.2.2 gives the session back its Ctrl/Y and Ctrl/T: they
+were off inside HISTSH, so Ctrl/Y showed "Interrupt" but stopped nothing (N20).
 Limits:
 
 - A `SET PROMPT` typed at the prompt is handled (HISTSH puts its marker back); a prompt
