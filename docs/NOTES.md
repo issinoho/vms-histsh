@@ -245,3 +245,6 @@ live SYLOGIN (`tests/vms/rehearse.txt`, now with a Ctrl/Y check) showed `T,Y` in
 HISTSH and Ctrl/Y stopping a WAIT on both. On IA64 the script's `SHOW TIME`, typed
 while SYLOGIN's `SET TERMINAL/INQUIRE` still ran (before HISTSH started), was lost:
 the script's 12 s isn't enough there (N12).
+
+**Retested by the user (2026-11-03, both nodes):** DEVMON in their own session, with
+0.2.2 installed, stops on Ctrl/Y.
