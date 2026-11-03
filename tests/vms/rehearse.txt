@@ -1,4 +1,5 @@
 # The new SYLOGIN, run by hand in an interactive session, starts the installed HISTSH.
+1 Ctrl/Y on, as an interactive login | SET CONTROL=(Y,T)\r
 2 holds the identifier? | SHOW PROCESS/RIGHTS\r
 12 run the LIVE SYLOGIN (expect fastfetch, X86VMS:: prompt) | @SYS$MANAGER:SYLOGIN\r
 2 command | SHOW TIME\r
@@ -7,4 +8,8 @@
 2 up-arrow (expect SHOW SYMBOL GSED) | \e[A
 1.5 clear | \x05\x15
 2 Ctrl/R tim then Return (expect SHOW TIME runs) | \x12tim\r
+1 Ctrl/Y still on inside (expect T,Y; N20) | WRITE SYS$OUTPUT "control: ", F$ENVIRONMENT("CONTROL")\r
+3 a wait | WAIT 0:0:20\r
+3 Ctrl/Y (expect it stops the WAIT) | \x19
+2 back at the prompt | WRITE SYS$OUTPUT "stopped"\r
 4 logout (ends the whole session) | LOGOUT\r

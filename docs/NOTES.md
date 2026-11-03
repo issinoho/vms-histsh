@@ -238,3 +238,10 @@ was off in the child too.
 Now HISTSH puts the state it found in `HISTSH$CONTROL` (`Y,T`, `Y` or `T`; not defined
 if both were off), and HISTSH_CHILD.COM does `SET CONTROL=(...)` before LOGIN.COM.
 Rerun on both nodes: the child shows `T,Y`, and Ctrl/Y stops the WAIT and DEVMON.
+
+**Released in 0.2.2 (2026-11-03):** the kits were installed over 0.2.1 on both nodes
+(`tests/vms/pcsi_upgrade.com`, approved by the user), and the login rehearsal through the
+live SYLOGIN (`tests/vms/rehearse.txt`, now with a Ctrl/Y check) showed `T,Y` inside
+HISTSH and Ctrl/Y stopping a WAIT on both. On IA64 the script's `SHOW TIME`, typed
+while SYLOGIN's `SET TERMINAL/INQUIRE` still ran (before HISTSH started), was lost:
+the script's 12 s isn't enough there (N12).

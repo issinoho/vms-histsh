@@ -1,6 +1,6 @@
 $! pcsi_upgrade.com - install a newer HISTSH kit over the installed one, and verify.
-$! Approved by the user 2026-10-24 (0.1.0 -> 0.2.0) and 2026-11-01 (0.2.0 -> 0.2.1),
-$! both nodes. Run from the work
+$! Approved by the user 2026-10-24 (0.1.0 -> 0.2.0), 2026-11-01 (0.2.0 -> 0.2.1) and
+$! 2026-11-03 (0.2.1 -> 0.2.2), both nodes. Run from the work
 $! directory after tools/kit.sh. Sessions already running keep their old image.
 $ set noon
 $ old_privs = f$setprv("SYSPRV,SYSNAM,CMKRNL,SYSLCK,BYPASS,WORLD")
